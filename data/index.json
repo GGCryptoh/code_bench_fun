@@ -1,5 +1,5 @@
 {
-  "updated": "2026-07-05T20:31:18.623Z",
+  "updated": "2026-07-05T20:49:35.142Z",
   "runs": [
     {
       "id": "cars-vs-canyon",
@@ -18,8 +18,8 @@
       "cover": "games/cars-vs-canyon/fable-5.html",
       "best": "fable-5",
       "totals": {
-        "cost_usd": 4.769467,
-        "output_tokens": 166728,
+        "cost_usd": 5.117259,
+        "output_tokens": 191396,
         "ms": 898302
       }
     }
