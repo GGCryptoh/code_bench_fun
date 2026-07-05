@@ -55,7 +55,7 @@ const OPENROUTER_HEADERS_EXTRA = {
 };
 const OPENROUTER_MAX_TOKENS = 32000;
 
-const CLI_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const CLI_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes — big one-shot games via claude CLI can run long
 const PROGRESS_INTERVAL_MS = 5000;
 const TIMELINE_SAMPLE_MS = 400;
 
