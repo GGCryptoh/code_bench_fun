@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — Code Bench Fun</title>
+<link rel="stylesheet" href="assets/site.css">
+<style>
+  /* ---------- privacy.html page-specific styles ---------- */
+
+  .card { max-width: 680px; margin: 0 auto; }
+  .card h2 { font-size: 16px; margin: 22px 0 12px; }
+  .card h2:first-child { margin-top: 0; }
+  .card p { margin: 0 0 14px; }
+  .card ul { margin: 0 0 14px; padding-left: 20px; }
+  .card li { margin: 0 0 8px; }
+  .card a { color: var(--t-body); border-bottom: 1px solid var(--border); transition: border-color .2s var(--ease); }
+  .card a:hover { border-color: var(--t-body); }
+  .card .label { display: block; margin-top: 28px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header id="topbar"></header>
+
+  <main class="card">
+    <h1 class="page-title">Privacy Policy</h1>
+
+    <h2 class="label">No Data Collection</h2>
+    <p>Code Bench Fun is a static website with no servers, no accounts, and no data collection. We do not use cookies, analytics, tracking pixels, or advertising. We do not collect, store, or process any information about you or your use of this site.</p>
+
+    <h2 class="label">Your OpenRouter API Key</h2>
+    <p>When you use the One-Shot Bench page, you provide your own OpenRouter API key. This key is stored <strong>only in your browser's localStorage</strong> and is sent <strong>only directly to OpenRouter.ai</strong> to run game builds. It never touches our servers (we don't have any). You can clear it anytime by clicking the Clear button on that page or by clearing your browser's site data.</p>
+
+    <h2 class="label">Your Prompts and Builds</h2>
+    <p>Prompts you type on the bench page are sent directly from your browser to OpenRouter and the model providers. These are subject to OpenRouter's and the providers' own privacy policies and terms of service.</p>
+
+    <h2 class label>Generated Games</h2>
+    <p>Games displayed in the gallery are AI-generated. They run sandboxed in your browser and make no network requests of any kind.</p>
+
+    <h2 class="label">Hosting and Server Logs</h2>
+    <p>This site is hosted on GitHub Pages. GitHub may log standard server access data such as IP addresses and request metadata per their own <a href="https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement">privacy policy</a>.</p>
+
+    <h2 class="label">Contact</h2>
+    <p>Questions or concerns? Reach out to <a href="mailto:geoff@geoffhopkins.com">geoff@geoffhopkins.com</a>.</p>
+
+    <p style="margin-top: 28px; font-size: 13px; color: var(--t-dim);">Last updated July 5, 2026.</p>
+  </main>
+
+  <footer class="site">
+    <a href="index.html">Gallery</a>
+    <a href="https://github.com/GGCryptoh/code_bench_fun">GitHub</a>
+  </footer>
+</div>
+
+<script src="assets/site.js"></script>
+<script>
+  document.getElementById("topbar").innerHTML = CBF.topbar("privacy.html");
+</script>
+
+</body>
+</html>

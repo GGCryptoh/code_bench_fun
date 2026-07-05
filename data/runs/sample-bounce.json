@@ -1,0 +1,59 @@
+{
+  "id": "sample-bounce",
+  "title": "Sample: Bouncing Things",
+  "prompt": "A colorful particle toy: glossy balls bounce under gravity in one, neon rings orbit in the other. Loops forever, no input. (Hand-written sample data for testing — not a real bench.)",
+  "system_prompt": "sample — not a real run",
+  "kind": "simulation",
+  "created": "2026-07-05T20:00:00Z",
+  "judge": { "model_key": "opus-4.8", "provider": "claude-cli" },
+  "builds": [
+    {
+      "model_key": "fable-5",
+      "provider": "claude-cli",
+      "provider_model_id": "claude-fable-5",
+      "file": "games/sample-bounce/fable-5.html",
+      "ok": true,
+      "error": null,
+      "ms": 96000,
+      "turns": 1,
+      "input_tokens": 1380,
+      "output_tokens": 7800,
+      "cost_usd": 0.4038,
+      "tps": 81.3,
+      "timeline": [[0,0],[8000,300],[20000,1100],[40000,2900],[60000,4800],[80000,6600],[96000,7800]],
+      "judge": { "works": 9, "fidelity": 8, "polish": 8, "creativity": 7, "score": 8.3, "verdict": "Clean gravity sim with nice radial shading; loops flawlessly." }
+    },
+    {
+      "model_key": "glm-5.2",
+      "provider": "openrouter",
+      "provider_model_id": "z-ai/glm-5.2",
+      "file": "games/sample-bounce/glm-5.2.html",
+      "ok": true,
+      "error": null,
+      "ms": 41000,
+      "turns": 1,
+      "input_tokens": 610,
+      "output_tokens": 5200,
+      "cost_usd": 0.0097,
+      "tps": 126.8,
+      "timeline": [[0,0],[4000,500],[12000,1700],[24000,3300],[34000,4500],[41000,5200]],
+      "judge": { "works": 8, "fidelity": 7, "polish": 7, "creativity": 8, "score": 7.4, "verdict": "Trippy neon orbitals with trail fade; thin on physics." }
+    },
+    {
+      "model_key": "gpt-5.5",
+      "provider": "openrouter",
+      "provider_model_id": "openai/gpt-5.5",
+      "file": null,
+      "ok": false,
+      "error": "sample failed-build example: no html in response",
+      "ms": 62000,
+      "turns": 1,
+      "input_tokens": 610,
+      "output_tokens": 2100,
+      "cost_usd": 0.0661,
+      "tps": 33.9,
+      "timeline": null,
+      "judge": null
+    }
+  ]
+}

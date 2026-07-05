@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Bench Fun — one prompt, every model</title>
+<link rel="stylesheet" href="assets/site.css">
+<style>
+  /* page-specific: home hero + leaderboard + empty state (everything else reuses site.css) */
+  .home-hero { padding: 6px 0 26px; }
+  .home-hero h1 { font-size: 34px; font-weight: 300; color: var(--t-hero); margin: 0 0 10px; letter-spacing: -.01em; }
+  .home-hero p { font-size: 14px; max-width: 640px; margin: 0; }
+
+  .section-label { display: block; margin: 34px 0 14px; }
+  .stat-strip .hero-num.judge { font-size: 22px; }
+
+  .leaderboard-row { display: flex; flex-wrap: wrap; gap: 12px; }
+  .lb-card { position: relative; flex: 0 0 auto; width: 132px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 12px 16px; }
+  .lb-card .lb-pill { position: absolute; top: 10px; right: 10px; }
+  .lb-card .chip { justify-content: center; }
+  .lb-score { font-size: 26px; font-weight: 300; color: var(--t-hero); font-variant-numeric: tabular-nums; }
+  .lb-line { font-size: 11px; }
+
+  .cover-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: .35; }
+
+  .empty-wrap { display: flex; justify-content: center; padding: 30px 0; }
+  .empty-card { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 46px 30px; max-width: 420px; }
+  .empty-title { color: var(--t-hero); font-size: 17px; font-weight: 400; }
+  .empty-sub { font-size: 13px; line-height: 1.6; }
+  .empty-sub a { color: var(--t-mute); border-bottom: 1px solid var(--border); }
+  .empty-sub a:hover { color: var(--t-hero); border-color: var(--border-hi); }
+
+  @media (max-width: 720px) {
+    .home-hero h1 { font-size: 26px; }
+    .lb-card { width: 108px; padding: 16px 8px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="topbar-slot"></div>
+
+  <section class="home-hero">
+    <h1>One prompt. Every model.</h1>
+    <p class="dim">Each run gives the identical game prompt to a squad of AI models — one shot, no retries. Time, tokens and cost are counted; Opus 4.8 judges the results.</p>
+  </section>
+
+  <div class="stat-strip" id="stat-strip"></div>
+
+  <section id="leaderboard-section">
+    <span class="label section-label">Model leaderboard</span>
+    <div class="leaderboard-row" id="leaderboard"></div>
+  </section>
+
+  <section id="gallery-section">
+    <span class="label section-label">Runs</span>
+    <div class="gallery" id="gallery"></div>
+  </section>
+
+  <footer class="site">
+    <span>Code Bench Fun</span>
+    <a href="privacy.html">Privacy</a>
+    <a href="https://github.com/GGCryptoh/code_bench_fun">GitHub</a>
+    <span>built with Claude Code</span>
+  </footer>
+</div>
+
+<script src="assets/site.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fmtDate(iso) {
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    } catch (e) { return ""; }
+  }
+
+  function animateCount(el, target, fmt) {
+    if (!el) return;
+    target = isFinite(target) ? target : 0;
+    var steps = 30, duration = 1000, i = 0;
+    var id = setInterval(function () {
+      i++;
+      el.textContent = fmt(target * (i / steps));
+      if (i >= steps) { clearInterval(id); el.textContent = fmt(target); }
+    }, duration / steps);
+  }
+
+  function renderStatStrip(runs, details) {
+    var el = document.getElementById("stat-strip");
+    if (!el) return;
+    var gamesBuilt = 0, spend = 0, tokens = 0;
+    details.forEach(function (d, i) {
+      if (d && Array.isArray(d.builds)) {
+        gamesBuilt += d.builds.length;
+        d.builds.forEach(function (b) {
+          spend += b.cost_usd || 0;
+          tokens += b.output_tokens || 0;
+        });
+      } else {
+        var r = runs[i] || {};
+        gamesBuilt += (r.models ? r.models.length : 0);
+        spend += (r.totals && r.totals.cost_usd) || 0;
+        tokens += (r.totals && r.totals.output_tokens) || 0;
+      }
+    });
+
+    el.innerHTML =
+      '<div class="card stat-tile"><span class="hero-num" id="st-runs">0</span><span class="label">Runs</span></div>' +
+      '<div class="card stat-tile"><span class="hero-num" id="st-games">0</span><span class="label">Games built</span></div>' +
+      '<div class="card stat-tile"><span class="hero-num" id="st-spend">$0</span><span class="label">Total spend</span></div>' +
+      '<div class="card stat-tile"><span class="hero-num" id="st-tokens">0</span><span class="label">Output tokens</span></div>' +
+      '<div class="card stat-tile"><span class="hero-num judge">Opus 4.8</span><span class="label">Judge</span></div>';
+
+    animateCount(document.getElementById("st-runs"), runs.length, function (v) { return String(Math.round(v)); });
+    animateCount(document.getElementById("st-games"), gamesBuilt, function (v) { return String(Math.round(v)); });
+    animateCount(document.getElementById("st-spend"), spend, function (v) { return CBF.fmtUSD(v); });
+    animateCount(document.getElementById("st-tokens"), tokens, function (v) { return CBF.fmtTok(v); });
+  }
+
+  function renderLeaderboard(details) {
+    var section = document.getElementById("leaderboard-section");
+    var el = document.getElementById("leaderboard");
+    if (!section || !el) return;
+
+    var stats = {};
+    details.forEach(function (d) {
+      if (!d || !Array.isArray(d.builds)) return;
+      d.builds.forEach(function (b) {
+        var key = b.model_key;
+        if (!key) return;
+        if (!stats[key]) stats[key] = { cost: 0, scores: [], tps: [] };
+        stats[key].cost += b.cost_usd || 0;
+        if (b.judge && typeof b.judge.score === "number") stats[key].scores.push(b.judge.score);
+        if (typeof b.tps === "number") stats[key].tps.push(b.tps);
+      });
+    });
+
+    var keys = Object.keys(stats);
+    if (!keys.length) { section.style.display = "none"; return; }
+
+    var rows = keys.map(function (key) {
+      var s = stats[key];
+      var avgScore = s.scores.length ? s.scores.reduce(function (a, b) { return a + b; }, 0) / s.scores.length : null;
+      var avgTps = s.tps.length ? s.tps.reduce(function (a, b) { return a + b; }, 0) / s.tps.length : null;
+      return { key: key, avgScore: avgScore, avgTps: avgTps, cost: s.cost };
+    });
+
+    rows.sort(function (a, b) {
+      if (a.avgScore == null && b.avgScore == null) return 0;
+      if (a.avgScore == null) return 1;
+      if (b.avgScore == null) return -1;
+      return b.avgScore - a.avgScore;
+    });
+
+    var bestKey = (rows.length && rows[0].avgScore != null) ? rows[0].key : null;
+
+    el.innerHTML = rows.map(function (r) {
+      var isBest = r.key === bestKey;
+      var scoreTxt = r.avgScore != null ? r.avgScore.toFixed(1) : "—";
+      var tpsTxt = (r.avgTps != null ? Math.round(r.avgTps) : "—") + " tok/s";
+      return '<div class="card lb-card"' + (isBest ? ' style="border-color:#525252"' : "") + '>' +
+        (isBest ? '<span class="pill lb-pill">Best</span>' : "") +
+        '<div>' + CBF.logoChip(r.key, 22) + '</div>' +
+        '<div class="lb-score">' + escapeHtml(scoreTxt) + '</div>' +
+        '<div class="mono dim lb-line">' + escapeHtml(CBF.fmtUSD(r.cost)) + ' spent</div>' +
+        '<div class="mono dim lb-line">' + escapeHtml(tpsTxt) + '</div>' +
+        '</div>';
+    }).join("");
+  }
+
+  function renderGallery(runs) {
+    var el = document.getElementById("gallery");
+    if (!el) return;
+
+    el.innerHTML = runs.map(function (r, i) {
+      var coverHtml = r.cover
+        ? '<iframe src="' + escapeHtml(r.cover) + '" sandbox="allow-scripts" loading="lazy"></iframe>'
+        : '<div class="cover-empty">' + CBF.siteLogo(28) + '</div>';
+
+      var modelsRow = (r.models || []).map(function (k) {
+        var m = CBF.MODELS[k] || { name: k, brand: "openrouter" };
+        var b = CBF.BRANDS[m.brand] || CBF.BRANDS.openrouter;
+        return '<span title="' + escapeHtml(m.name) + '">' + b.logo(16) + '</span>';
+      }).join("");
+
+      var totals = r.totals || {};
+      var dateTxt = r.created ? fmtDate(r.created) : "";
+
+      return '<a class="card gcard reveal" style="animation-delay:' + (i * 60) + 'ms" href="run.html?id=' + encodeURIComponent(r.id) + '">' +
+        '<div class="cover">' + coverHtml + '</div>' +
+        '<div class="meta">' +
+          '<div class="title">' + escapeHtml(r.title || r.id) + '</div>' +
+          '<div class="row"><span class="pill">' + escapeHtml(r.kind || "") + '</span><span class="dim" style="font-size:12px">' + escapeHtml(dateTxt) + '</span></div>' +
+          '<div class="row">' + modelsRow + '</div>' +
+          '<div class="nums"><span>' + escapeHtml(CBF.fmtUSD(totals.cost_usd)) + '</span><span>' + escapeHtml(CBF.fmtMs(totals.ms)) + '</span><span>' + escapeHtml(CBF.fmtTok(totals.output_tokens)) + '</span></div>' +
+        '</div>' +
+      '</a>';
+    }).join("");
+  }
+
+  function renderEmpty() {
+    var statStrip = document.getElementById("stat-strip");
+    var lbSection = document.getElementById("leaderboard-section");
+    var gallerySection = document.getElementById("gallery-section");
+    if (statStrip) statStrip.style.display = "none";
+    if (lbSection) lbSection.style.display = "none";
+    if (gallerySection) {
+      var label = gallerySection.querySelector(".label");
+      if (label) label.style.display = "none";
+      var gal = document.getElementById("gallery");
+      if (gal) {
+        gal.className = "empty-wrap";
+        gal.innerHTML =
+          '<div class="card empty-card">' +
+            CBF.siteLogo(32) +
+            '<div class="empty-title">No runs yet</div>' +
+            '<div class="dim empty-sub">Run your first bench with <span class="mono">runner/bench.mjs</span> or the <a href="bench.html">One-Shot Bench</a> page.</div>' +
+          '</div>';
+      }
+    }
+  }
+
+  async function init() {
+    var slot = document.getElementById("topbar-slot");
+    if (slot) slot.outerHTML = CBF.topbar("index.html");
+
+    try {
+      var idx = await CBF.loadIndex();
+      var runs = (idx && Array.isArray(idx.runs)) ? idx.runs : [];
+      if (!runs.length) { renderEmpty(); return; }
+
+      var details = await Promise.all(runs.map(function (r) {
+        return CBF.loadRun(r.id).catch(function () { return null; });
+      }));
+
+      renderStatStrip(runs, details);
+      renderLeaderboard(details);
+      renderGallery(runs);
+    } catch (e) {
+      renderEmpty();
+    }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

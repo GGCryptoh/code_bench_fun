@@ -1,0 +1,16 @@
+{
+  "updated": "2026-07-05T20:00:00Z",
+  "runs": [
+    {
+      "id": "sample-bounce",
+      "title": "Sample: Bouncing Things",
+      "prompt": "A colorful particle toy: glossy balls bounce under gravity in one, neon rings orbit in the other. Loops forever, no input. (Hand-written sample data for testing — not a real bench.)",
+      "kind": "simulation",
+      "created": "2026-07-05T20:00:00Z",
+      "models": ["fable-5", "glm-5.2", "gpt-5.5"],
+      "cover": "games/sample-bounce/fable-5.html",
+      "best": "fable-5",
+      "totals": { "cost_usd": 0.4796, "output_tokens": 15100, "ms": 96000 }
+    }
+  ]
+}

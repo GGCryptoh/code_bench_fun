@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run — Code Bench Fun</title>
+<link rel="stylesheet" href="assets/site.css">
+<style>
+  /* ---------- run.html page-specific styles ---------- */
+
+  .run-head { display: flex; flex-direction: column; gap: 14px; margin-bottom: 22px; }
+  .run-head .back { color: var(--t-dim); font-size: 13px; transition: color .2s var(--ease); }
+  .run-head .back:hover { color: var(--t-hero); }
+  .run-head .title-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .run-head .pills { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .run-head details.prompt { background: var(--card); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 10px 14px; }
+  .run-head details.prompt summary { cursor: pointer; color: var(--t-mute); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+  .run-head details.prompt pre { white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 13px; color: var(--t-body); margin: 10px 0 2px; }
+  .run-head .actions { display: flex; gap: 10px; }
+
+  /* judge score reveal */
+  .panel-sub .judge { color: var(--t-hero); opacity: 0; transition: opacity .4s var(--ease); }
+  .panel-sub .judge.show { opacity: 1; }
+
+  /* system prompt details at bottom */
+  details.sysprompt { margin-top: 18px; }
+  details.sysprompt summary { cursor: pointer; color: var(--t-mute); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+  details.sysprompt pre { white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 12px; color: var(--t-dim); margin-top: 10px; }
+
+  /* stats table verdict column */
+  table.stats td.verdict { text-align: left; font-family: var(--sans); color: var(--t-dim); font-size: 12px; max-width: 260px; white-space: normal; }
+  table.stats td.fail-cell { text-align: left; color: var(--t-ghost); font-family: var(--sans); }
+
+  /* clickable cost number = skip to end */
+  .panel-head .cost { cursor: pointer; }
+
+  /* empty state */
+  .empty-card { text-align: center; padding: 60px 20px; }
+  .empty-card .label { display: block; margin-bottom: 14px; }
+  .empty-card a.btn { display: inline-block; margin-top: 18px; }
+
+  /* reel mode: only first 4 panels visible, exit button, footer */
+  body.reel .rungrid .panel:nth-child(n+5) { display: none; }
+  .reel-exit {
+    display: none; position: fixed; top: 14px; right: 14px; z-index: 50;
+    width: 34px; height: 34px; border-radius: 999px; background: rgba(23,23,23,.8);
+    border: 1px solid var(--border-hi); color: var(--t-hero); font-size: 16px; line-height: 1;
+    align-items: center; justify-content: center; opacity: .25; transition: opacity .2s var(--ease);
+  }
+  .reel-exit:hover { opacity: 1; }
+  body.reel .reel-exit { display: flex; }
+
+  @media (max-width: 720px) {
+    .run-head .title-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<button class="reel-exit" id="reelExit" title="Exit reel mode" aria-label="Exit reel mode">✕</button>
+
+<div class="wrap" id="wrap">
+  <div id="content"></div>
+</div>
+
+<script src="assets/site.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  document.getElementById("content").insertAdjacentHTML("beforebegin", CBF.topbar(""));
+
+  const params = new URLSearchParams(location.search);
+  const runId = params.get("id");
+  const content = document.getElementById("content");
+
+  if (!runId) {
+    renderEmpty("No run specified.");
+    return;
+  }
+
+  CBF.loadRun(runId).then(renderRun).catch(function (err) {
+    console.error(err);
+    renderEmpty("Couldn't load that run.");
+  });
+
+  function renderEmpty(msg) {
+    content.innerHTML =
+      '<div class="card empty-card">' +
+      '<span class="label">' + escapeHtml(msg) + '</span>' +
+      '<div>Head back to the gallery to pick a run.</div>' +
+      '<a class="btn" href="index.html">&larr; Gallery</a>' +
+      "</div>";
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fmtDateShort(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  const SCALE_MS = 20000;
+  let handles = [];
+  let loopTimer = null;
+  let run = null;
+
+  function renderRun(data) {
+    run = data;
+    const builds = Array.isArray(run.builds) ? run.builds : [];
+
+    // ---- totals for stat strip ----
+    const totalCost = builds.reduce(function (s, b) { return s + (b.cost_usd || 0); }, 0);
+    const maxMs = builds.reduce(function (m, b) { return Math.max(m, b.ms || 0); }, 0);
+    const totalOutTok = builds.reduce(function (s, b) { return s + (b.output_tokens || 0); }, 0);
+    const modelCount = builds.length;
+    let bestKey = run.best;
+    if (!bestKey) {
+      let bestScore = -1;
+      builds.forEach(function (b) {
+        const sc = b.judge && typeof b.judge.score === "number" ? b.judge.score : -1;
+        if (b.ok && sc > bestScore) { bestScore = sc; bestKey = b.model_key; }
+      });
+    }
+
+    // ---- header ----
+    document.title = (run.title || "Run") + " — Code Bench Fun";
+
+    const kind = run.kind === "interactive" ? "interactive" : "simulation";
+    const judgeModelKey = run.judge && run.judge.model_key;
+    const judgeName = judgeModelKey && CBF.MODELS[judgeModelKey] ? CBF.MODELS[judgeModelKey].name : "Opus 4.8";
+
+    const headHtml =
+      '<section class="run-head no-reel">' +
+        '<a class="back" href="index.html">&larr; Gallery</a>' +
+        '<div class="title-row">' +
+          '<h1 class="page-title">' + escapeHtml(run.title || "Untitled run") + "</h1>" +
+          '<div class="pills">' +
+            '<span class="pill">' + kind + "</span>" +
+            '<span class="pill">' + escapeHtml(fmtDateShort(run.created)) + "</span>" +
+            '<span class="pill">judged by ' + escapeHtml(judgeName) + "</span>" +
+          "</div>" +
+        "</div>" +
+        (run.prompt
+          ? '<details class="prompt"><summary>Prompt</summary><pre class="mono">' + escapeHtml(run.prompt) + "</pre></details>"
+          : "") +
+        '<div class="actions">' +
+          '<button class="btn" id="btnReplay">Replay</button>' +
+          '<button class="btn ghost" id="btnReel">Reel mode</button>' +
+        "</div>" +
+      "</section>";
+
+    // ---- stat strip ----
+    const bestChip = bestKey ? CBF.logoChip(bestKey, 18) : "—";
+    const statHtml =
+      '<section class="stat-strip no-reel">' +
+        '<div class="card stat-tile"><span class="hero-num">' + CBF.fmtUSD(totalCost) + '</span><span class="label">Total cost</span></div>' +
+        '<div class="card stat-tile"><span class="hero-num mono">' + CBF.fmtMs(maxMs) + '</span><span class="label">Wall time</span></div>' +
+        '<div class="card stat-tile"><span class="hero-num mono">' + CBF.fmtTok(totalOutTok) + '</span><span class="label">Output tokens</span></div>' +
+        '<div class="card stat-tile"><span class="hero-num">' + modelCount + '</span><span class="label">Models</span></div>' +
+        '<div class="card stat-tile"><span class="hero-num" style="font-size:20px">' + bestChip + '</span><span class="label">Best</span></div>' +
+      "</section>";
+
+    // ---- grid ----
+    const gridHtml = '<section class="rungrid">' + builds.map(buildPanel).join("") + "</section>";
+
+    // ---- desktop stats table ----
+    const tableHtml = buildStatsTable(builds);
+
+    // ---- system prompt details ----
+    const sysHtml = run.system_prompt
+      ? '<details class="sysprompt no-reel"><summary>System prompt</summary><pre class="mono">' + escapeHtml(run.system_prompt) + "</pre></details>"
+      : "";
+
+    // ---- footer ----
+    const footHtml =
+      '<footer class="site no-reel">' +
+        '<a href="privacy.html">Privacy</a>' +
+        '<a href="https://github.com/GGCryptoh/code_bench_fun" target="_blank" rel="noopener">GitHub</a>' +
+        '<span>AI-built games, judged by AI</span>' +
+      "</footer>";
+
+    content.innerHTML = headHtml + statHtml + gridHtml + tableHtml + sysHtml + footHtml;
+
+    // ---- wire up interactions ----
+    wireReplay(builds, maxMs);
+    wireReel(builds, maxMs);
+    wireSkip(builds);
+
+    startCounters(builds, maxMs);
+
+    if (params.get("reel") === "1") enterReel();
+  }
+
+  function buildPanel(build, i) {
+    const ok = !!build.ok;
+    const chip = CBF.logoChip(build.model_key, 20);
+    const frameInner = ok
+      ? '<iframe sandbox="allow-scripts" loading="eager" src="' + escapeHtml(build.file) + '"></iframe>'
+      : '<div class="fail">' + escapeHtml((CBF.MODELS[build.model_key] && CBF.MODELS[build.model_key].name) || build.model_key) +
+        " failed: " + escapeHtml(build.error || "unknown error") + "</div>";
+
+    const turns = build.turns != null ? build.turns + (build.turns === 1 ? " turn" : " turns") : "—";
+
+    return (
+      '<div class="panel reveal" style="animation-delay:' + (i * 60) + 'ms" data-idx="' + i + '">' +
+        '<div class="panel-head">' +
+          chip +
+          '<span class="cost mono" data-role="cost">$0.00</span>' +
+          '<span class="bar"></span>' +
+        "</div>" +
+        '<div class="panel-sub">' +
+          '<span class="time" data-role="time">' + escapeHtml(CBF.fmtMs(build.ms)) + "</span>" +
+          '<span class="tok" data-role="tok">0 tok</span>' +
+          '<span class="tps" data-role="tps">— tok/s</span>' +
+          '<span class="turns">' + escapeHtml(turns) + "</span>" +
+          '<span class="judge" data-role="judge"></span>' +
+        "</div>" +
+        '<div class="frame">' + frameInner + "</div>" +
+      "</div>"
+    );
+  }
+
+  function buildStatsTable(builds) {
+    if (!builds.length) return "";
+
+    function maxIdx(pick) {
+      let idx = -1, val = null;
+      builds.forEach(function (b, i) {
+        if (!b.ok) return;
+        const v = pick(b);
+        if (v == null || isNaN(v)) return;
+        if (val === null || v > val) { val = v; idx = i; }
+      });
+      return idx;
+    }
+    function minIdx(pick) {
+      let idx = -1, val = null;
+      builds.forEach(function (b, i) {
+        if (!b.ok) return;
+        const v = pick(b);
+        if (v == null || isNaN(v)) return;
+        if (val === null || v < val) { val = v; idx = i; }
+      });
+      return idx;
+    }
+
+    const fastestIdx = minIdx(function (b) { return b.ms; });
+    const highestTpsIdx = maxIdx(function (b) { return b.tps; });
+    const cheapestIdx = minIdx(function (b) { return b.cost_usd; });
+    const worksIdx = maxIdx(function (b) { return b.judge && b.judge.works; });
+    const fidelityIdx = maxIdx(function (b) { return b.judge && b.judge.fidelity; });
+    const polishIdx = maxIdx(function (b) { return b.judge && b.judge.polish; });
+    const creativityIdx = maxIdx(function (b) { return b.judge && b.judge.creativity; });
+    const scoreIdx = maxIdx(function (b) { return b.judge && b.judge.score; });
+
+    const rows = builds.map(function (b, i) {
+      const name = (CBF.MODELS[b.model_key] && CBF.MODELS[b.model_key].name) || b.model_key;
+      if (!b.ok) {
+        return (
+          "<tr>" +
+            "<td>" + CBF.logoChip(b.model_key, 16) + "</td>" +
+            '<td class="fail-cell" colspan="12">' + escapeHtml(name) + " failed: " + escapeHtml(b.error || "unknown error") + "</td>" +
+          "</tr>"
+        );
+      }
+      const j = b.judge || {};
+      const cls = function (idx) { return idx === i ? " best" : ""; };
+      return (
+        "<tr>" +
+          "<td>" + CBF.logoChip(b.model_key, 16) + "</td>" +
+          '<td class="' + cls(fastestIdx).trim() + '">' + escapeHtml(CBF.fmtMs(b.ms)) + "</td>" +
+          "<td>" + escapeHtml(CBF.fmtTok(b.input_tokens)) + "</td>" +
+          "<td>" + escapeHtml(CBF.fmtTok(b.output_tokens)) + "</td>" +
+          '<td class="' + cls(highestTpsIdx).trim() + '">' + (b.tps != null ? b.tps.toFixed(1) : "—") + "</td>" +
+          "<td>" + (b.turns != null ? b.turns : "—") + "</td>" +
+          '<td class="' + cls(cheapestIdx).trim() + '">' + escapeHtml(CBF.fmtUSD(b.cost_usd)) + "</td>" +
+          '<td class="' + cls(worksIdx).trim() + '">' + (j.works != null ? j.works : "—") + "</td>" +
+          '<td class="' + cls(fidelityIdx).trim() + '">' + (j.fidelity != null ? j.fidelity : "—") + "</td>" +
+          '<td class="' + cls(polishIdx).trim() + '">' + (j.polish != null ? j.polish : "—") + "</td>" +
+          '<td class="' + cls(creativityIdx).trim() + '">' + (j.creativity != null ? j.creativity : "—") + "</td>" +
+          '<td class="' + cls(scoreIdx).trim() + '">' + (j.score != null ? j.score.toFixed(1) : "—") + "</td>" +
+          '<td class="verdict">' + escapeHtml(j.verdict || "—") + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+
+    return (
+      '<div class="card no-reel" style="margin-top:20px; overflow-x:auto">' +
+        '<table class="stats"><thead><tr>' +
+          "<th>Model</th><th>Time</th><th>In tok</th><th>Out tok</th><th>Tok/s</th><th>Turns</th>" +
+          "<th>Cost</th><th>Works</th><th>Fidelity</th><th>Polish</th><th>Creativity</th><th>Score</th><th>Verdict</th>" +
+        "</tr></thead><tbody>" + rows + "</tbody></table>" +
+      "</div>"
+    );
+  }
+
+  function elsFor(panel) {
+    return {
+      cost: panel.querySelector('[data-role="cost"]'),
+      tok: panel.querySelector('[data-role="tok"]'),
+      tps: panel.querySelector('[data-role="tps"]'),
+      time: panel.querySelector('[data-role="time"]'),
+      bar: panel.querySelector(".bar"),
+    };
+  }
+
+  function startCounters(builds, maxMs) {
+    cancelAll();
+    const panels = content.querySelectorAll(".panel");
+    let doneCount = 0;
+    const total = builds.length;
+
+    handles = builds.map(function (build, i) {
+      const panel = panels[i];
+      if (!panel) return null;
+      const els = elsFor(panel);
+      const judgeEl = panel.querySelector('[data-role="judge"]');
+      if (judgeEl) { judgeEl.textContent = ""; judgeEl.classList.remove("show"); }
+
+      return CBF.counter(els, build, maxMs, SCALE_MS, function onDone() {
+        if (judgeEl && build.judge && typeof build.judge.score === "number") {
+          judgeEl.textContent = "★ " + build.judge.score.toFixed(1);
+          judgeEl.classList.add("show");
+        }
+        doneCount++;
+        if (doneCount >= total && document.body.classList.contains("reel")) {
+          scheduleReelLoop(builds, maxMs);
+        }
+      });
+    });
+  }
+
+  function cancelAll() {
+    handles.forEach(function (h) { if (h) h.cancel(); });
+    handles = [];
+    if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
+  }
+
+  function scheduleReelLoop(builds, maxMs) {
+    if (loopTimer) clearTimeout(loopTimer);
+    loopTimer = setTimeout(function () {
+      if (document.body.classList.contains("reel")) startCounters(builds, maxMs);
+    }, 4000);
+  }
+
+  function wireReplay(builds, maxMs) {
+    const btn = document.getElementById("btnReplay");
+    if (btn) btn.addEventListener("click", function () { startCounters(builds, maxMs); });
+  }
+
+  function wireSkip(builds) {
+    content.addEventListener("click", function (e) {
+      const cost = e.target.closest('[data-role="cost"]');
+      if (!cost) return;
+      handles.forEach(function (h) { if (h) h.finish(); });
+    });
+  }
+
+  function enterReel() {
+    document.body.classList.add("reel");
+    if (!document.querySelector(".reel-foot")) {
+      const foot = document.createElement("div");
+      foot.className = "reel-foot";
+      foot.innerHTML = CBF.siteLogo(20) + "<span>Code Bench Fun &mdash; One Prompt, Every Model</span>";
+      document.getElementById("wrap").appendChild(foot);
+    }
+    const btn = document.getElementById("btnReel");
+    if (btn) btn.textContent = "Exit reel";
+  }
+
+  function exitReel() {
+    document.body.classList.remove("reel");
+    if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
+    const btn = document.getElementById("btnReel");
+    if (btn) btn.textContent = "Reel mode";
+  }
+
+  function wireReel(builds, maxMs) {
+    const btn = document.getElementById("btnReel");
+    if (btn) btn.addEventListener("click", function () {
+      if (document.body.classList.contains("reel")) {
+        exitReel();
+      } else {
+        enterReel();
+        startCounters(builds, maxMs); // fresh take for the recording
+      }
+    });
+    const exitBtn = document.getElementById("reelExit");
+    if (exitBtn) exitBtn.addEventListener("click", exitReel);
+  }
+})();
+</script>
+</body>
+</html>
