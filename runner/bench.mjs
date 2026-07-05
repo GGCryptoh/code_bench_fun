@@ -15,6 +15,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import fs from "node:fs/promises";
 
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
 /* ============================================================================
  * MODEL REGISTRY
  * MUST stay in sync with the `MODELS` object in assets/site.js — same keys,
@@ -25,8 +27,8 @@ export const MODELS = {
   "opus-4.8":         { name: "Opus 4.8",         brand: "anthropic", or_id: "anthropic/claude-opus-4.8",  cli_id: "claude-opus-4-8",           in_per_m: 5,    out_per_m: 25 },
   "sonnet-5":         { name: "Sonnet 5",         brand: "anthropic", or_id: "anthropic/claude-sonnet-5",  cli_id: "claude-sonnet-5",           in_per_m: 2,    out_per_m: 10 },
   "haiku-4.5":        { name: "Haiku 4.5",        brand: "anthropic", or_id: "anthropic/claude-haiku-4.5", cli_id: "claude-haiku-4-5-20251001", in_per_m: 1,    out_per_m: 5 },
-  "gpt-5.5":          { name: "GPT 5.5",          brand: "openai",    or_id: "openai/gpt-5.5",             cli_id: null, in_per_m: 5,    out_per_m: 30 },
-  "gpt-5.1":          { name: "GPT 5.1",          brand: "openai",    or_id: "openai/gpt-5.1",             cli_id: null, in_per_m: 1.25, out_per_m: 10 },
+  "gpt-5.5":          { name: "GPT 5.5",          brand: "openai",    or_id: "openai/gpt-5.5",             openai_id: "gpt-5.5", cli_id: null, in_per_m: 5,    out_per_m: 30 },
+  "gpt-5.1":          { name: "GPT 5.1",          brand: "openai",    or_id: "openai/gpt-5.1",             openai_id: "gpt-5.1", cli_id: null, in_per_m: 1.25, out_per_m: 10 },
   "glm-5.2":          { name: "GLM 5.2",          brand: "zai",       or_id: "z-ai/glm-5.2",               cli_id: null, in_per_m: 0.57, out_per_m: 1.8 },
   "grok-4.20":        { name: "Grok 4.20",        brand: "xai",       or_id: "x-ai/grok-4.20",             cli_id: null, in_per_m: 1.25, out_per_m: 2.5 },
   "gemini-3.5-flash": { name: "Gemini 3.5 Flash", brand: "google",    or_id: "google/gemini-3.5-flash",    cli_id: null, in_per_m: 1.5,  out_per_m: 9 },
@@ -262,7 +264,7 @@ function getOpenRouterKey() {
   // .env.local / .env at the repo root (gitignored) — OPENROUTER_API_KEY=sk-or-...
   for (const envFile of [".env.local", ".env"]) {
     try {
-      const txt = readFileSync(join(REPO_ROOT, envFile), "utf8");
+      const txt = readFileSync(path.join(REPO_ROOT, envFile), "utf8");
       const m = txt.match(/^\s*(?:export\s+)?OPENROUTER_API_KEY\s*=\s*["']?([^\s"'#]+)/m);
       if (m && m[1]) {
         cachedOpenRouterKey = m[1];
@@ -285,6 +287,39 @@ function getOpenRouterKey() {
     "Missing OpenRouter API key: set OPENROUTER_API_KEY in the environment, put it in .env.local at the repo root, " +
       'or add it to macOS Keychain (service "OPENROUTER_API_KEY").'
   );
+}
+
+/* Direct OpenAI key: env → .env.local/.env → keychain (service OPENAI_KEY).
+   When present, OpenAI models run against api.openai.com instead of OpenRouter. */
+let cachedOpenAIKey = null;
+function getOpenAIKey() {
+  if (cachedOpenAIKey) return cachedOpenAIKey;
+  if (process.env.OPENAI_API_KEY) {
+    cachedOpenAIKey = process.env.OPENAI_API_KEY;
+    return cachedOpenAIKey;
+  }
+  for (const envFile of [".env.local", ".env"]) {
+    try {
+      const txt = readFileSync(path.join(REPO_ROOT, envFile), "utf8");
+      const m = txt.match(/^\s*(?:export\s+)?OPENAI_API_KEY\s*=\s*["']?([^\s"'#]+)/m);
+      if (m && m[1]) {
+        cachedOpenAIKey = m[1];
+        return cachedOpenAIKey;
+      }
+    } catch { /* try next source */ }
+  }
+  try {
+    const key = execSync("security find-generic-password -s OPENAI_KEY -w", { encoding: "utf8" }).trim();
+    if (key) {
+      cachedOpenAIKey = key;
+      return cachedOpenAIKey;
+    }
+  } catch { /* fall through */ }
+  throw new Error("Missing OpenAI API key: set OPENAI_API_KEY (env or .env.local) or keychain service OPENAI_KEY.");
+}
+
+function hasOpenAIKey() {
+  try { return !!getOpenAIKey(); } catch { return false; }
 }
 
 /* ============================================================================
@@ -469,48 +504,56 @@ async function runClaudeCliBuild({ runId, modelKey, entry, prompt }) {
 /* ============================================================================
  * OPENROUTER PROVIDER (streaming SSE)
  * ========================================================================== */
-async function runOpenRouterBuild({ runId, modelKey, entry, prompt }) {
-  const providerModelId = entry.or_id;
+async function runOpenRouterBuild({ runId, modelKey, entry, prompt, api = "openrouter" }) {
+  const isOpenAI = api === "openai";
+  const providerName = isOpenAI ? "openai" : "openrouter";
+  const providerModelId = isOpenAI ? entry.openai_id : entry.or_id;
+  const endpoint = isOpenAI ? "https://api.openai.com/v1/chat/completions" : OPENROUTER_URL;
   const startedAt = Date.now();
 
   const body = {
     model: providerModelId,
     stream: true,
     stream_options: { include_usage: true },
-    usage: { include: true },
-    max_tokens: OPENROUTER_MAX_TOKENS,
-    // Cap thinking so reasoning models don't spend the whole token budget before writing HTML.
-    // OpenRouter drops this for models without reasoning support.
-    reasoning: { effort: "medium" },
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: prompt },
     ],
   };
+  if (isOpenAI) {
+    body.max_completion_tokens = OPENROUTER_MAX_TOKENS; // GPT-5 family rejects max_tokens
+    body.reasoning_effort = "medium";
+  } else {
+    body.usage = { include: true };
+    body.max_tokens = OPENROUTER_MAX_TOKENS;
+    // Cap thinking so reasoning models don't spend the whole token budget before writing HTML.
+    // OpenRouter drops this for models without reasoning support.
+    body.reasoning = { effort: "medium" };
+  }
 
   let apiKey;
   try {
-    apiKey = getOpenRouterKey();
+    apiKey = isOpenAI ? getOpenAIKey() : getOpenRouterKey();
   } catch (err) {
-    return { build: makeFailedBuild(modelKey, "openrouter", providerModelId, 0, err.message), html: null };
+    return { build: makeFailedBuild(modelKey, providerName, providerModelId, 0, err.message), html: null };
   }
 
   let res = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      res = await fetch(OPENROUTER_URL, {
+      res = await fetch(endpoint, {
         method: "POST",
         signal: globalAbort.signal,
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          ...OPENROUTER_HEADERS_EXTRA,
+          ...(isOpenAI ? {} : OPENROUTER_HEADERS_EXTRA),
         },
         body: JSON.stringify(body),
       });
     } catch (err) {
       return {
-        build: makeFailedBuild(modelKey, "openrouter", providerModelId, Date.now() - startedAt, `network error: ${err.message}`),
+        build: makeFailedBuild(modelKey, providerName, providerModelId, Date.now() - startedAt, `network error: ${err.message}`),
         html: null,
       };
     }
@@ -519,22 +562,30 @@ async function runOpenRouterBuild({ runId, modelKey, entry, prompt }) {
 
     const text = await res.text().catch(() => "");
 
-    // 402 = the key's spend limit can't pre-authorize max_tokens; clamp to what it can afford and retry.
-    const afford = res.status === 402 && text.match(/can only afford (\d+)/);
+    // OpenRouter 402 = the key's spend limit can't pre-authorize max_tokens; clamp and retry.
+    const afford = !isOpenAI && res.status === 402 && text.match(/can only afford (\d+)/);
     if (afford && Number(afford[1]) > 4000) {
       body.max_tokens = Number(afford[1]) - 500;
       process.stderr.write(`[${modelKey}] 402 spend-limit — retrying with max_tokens=${body.max_tokens}\n`);
       continue;
     }
-    // Some providers reject the reasoning param outright — drop it and retry once.
-    if (res.status === 400 && /reasoning/i.test(text) && body.reasoning) {
+    // Some providers/models reject the reasoning params outright — drop and retry once.
+    if (res.status === 400 && /reasoning/i.test(text) && (body.reasoning || body.reasoning_effort)) {
       delete body.reasoning;
-      process.stderr.write(`[${modelKey}] provider rejected reasoning param — retrying without it\n`);
+      delete body.reasoning_effort;
+      process.stderr.write(`[${modelKey}] rejected reasoning param — retrying without it\n`);
+      continue;
+    }
+    // Older OpenAI models want max_tokens instead of max_completion_tokens.
+    if (isOpenAI && res.status === 400 && /max_completion_tokens/i.test(text) && body.max_completion_tokens) {
+      body.max_tokens = body.max_completion_tokens;
+      delete body.max_completion_tokens;
+      process.stderr.write(`[${modelKey}] swapping to max_tokens — retrying\n`);
       continue;
     }
     return {
       build: makeFailedBuild(
-        modelKey, "openrouter", providerModelId, Date.now() - startedAt,
+        modelKey, providerName, providerModelId, Date.now() - startedAt,
         `HTTP ${res.status}: ${text.slice(0, 300)}`
       ),
       html: null,
@@ -542,7 +593,7 @@ async function runOpenRouterBuild({ runId, modelKey, entry, prompt }) {
   }
   if (!res || !res.ok || !res.body) {
     return {
-      build: makeFailedBuild(modelKey, "openrouter", providerModelId, Date.now() - startedAt, "request failed after retries"),
+      build: makeFailedBuild(modelKey, providerName, providerModelId, Date.now() - startedAt, "request failed after retries"),
       html: null,
     };
   }
@@ -598,7 +649,7 @@ async function runOpenRouterBuild({ runId, modelKey, entry, prompt }) {
     }
   } catch (err) {
     return {
-      build: makeFailedBuild(modelKey, "openrouter", providerModelId, Date.now() - startedAt, `stream error: ${err.message}`),
+      build: makeFailedBuild(modelKey, providerName, providerModelId, Date.now() - startedAt, `stream error: ${err.message}`),
       html: null,
     };
   }
@@ -626,7 +677,7 @@ async function runOpenRouterBuild({ runId, modelKey, entry, prompt }) {
 
   const build = {
     model_key: modelKey,
-    provider: "openrouter",
+    provider: providerName,
     provider_model_id: providerModelId,
     ok: extraction.ok,
     error: extraction.ok ? null : extraction.error,
@@ -677,6 +728,11 @@ async function runOneModel({ runId, modelKey, prompt, forceOpenrouter }) {
   const useCli = !!entry.cli_id && !forceOpenrouter;
   if (useCli) {
     return runClaudeCliBuild({ runId, modelKey, entry, prompt });
+  }
+  // OpenAI models go direct to api.openai.com when a key is available (exact first-party
+  // billing, no OpenRouter spend-limit preauth); --force-openrouter overrides.
+  if (entry.openai_id && !forceOpenrouter && hasOpenAIKey()) {
+    return runOpenRouterBuild({ runId, modelKey, entry, prompt, api: "openai" });
   }
   if (!entry.or_id) {
     return { build: makeFailedBuild(modelKey, "openrouter", null, 0, "model has no or_id configured"), html: null };

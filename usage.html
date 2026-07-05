@@ -87,6 +87,7 @@ git add -A && git commit -m "cars vs canyon run" && git push</pre>
         <tr><td>3. macOS keychain</td><td>service <span class="mono">OPENROUTER_API_KEY</span></td></tr>
       </table>
       <p style="margin-top:10px">Claude models (Fable 5, Opus 4.8, Sonnet 5, Haiku 4.5) run through the local <span class="mono">claude</span> CLI on your Claude subscription — no API key needed.</p>
+      <p style="margin-top:10px">OpenAI models (GPT 5.5, GPT 5.1) go <b style="font-weight:600">direct to api.openai.com</b> when an <span class="mono">OPENAI_API_KEY</span> is available (same resolution order: env → .env.local → keychain service <span class="mono">OPENAI_KEY</span>) — exact first-party billing, no OpenRouter spend-limit preauth. No key → they fall back to OpenRouter. <span class="mono">--force-openrouter</span> overrides.</p>
     </div>
 
     <div class="card">
