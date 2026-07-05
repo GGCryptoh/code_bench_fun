@@ -1,0 +1,569 @@
+{
+  "id": "cars-vs-canyon",
+  "title": "Cars vs Canyon",
+  "prompt": "A 2D side-view physics simulation: a red car and a blue car race in from the left, hit launch ramps and jump across a deep canyon side by side. Suspension \n  compression and bounce on landing, kicked-up dust and debris particles, parallax sky with drifting clouds and a warm sun. After each jump the cars reset and run again with\n  slightly different speeds, forever. Fixed camera, no user input, pure autoplaying simulation.",
+  "system_prompt": "You are competing in a one-shot game-building benchmark. Reply with ONE complete self-contained HTML file and nothing else — no markdown fences, no commentary before or after. Hard rules: no external requests of any kind (no CDNs, fonts, images, analytics); everything inline. The file runs inside a sandboxed iframe (sandbox=\"allow-scripts\"): never use localStorage, sessionStorage, cookies, alert, prompt or confirm. Fill the whole viewport (html,body{margin:0;height:100%;overflow:hidden}) and look good in a SQUARE frame. If the request is a simulation: start automatically, run and loop forever, zero user input. If interactive: show minimal on-screen instructions and support both touch and keyboard. Push visual polish: cohesive palette, smooth motion, particles, depth — it will be judged on looks in a screen recording.",
+  "kind": "simulation",
+  "created": "2026-07-05T20:31:18.619Z",
+  "judge": {
+    "model_key": "opus-4.8",
+    "provider": "claude-cli"
+  },
+  "builds": [
+    {
+      "model_key": "fable-5",
+      "provider": "claude-cli",
+      "provider_model_id": "claude-fable-5",
+      "ok": true,
+      "error": null,
+      "ms": 825293,
+      "turns": 1,
+      "input_tokens": 4840,
+      "output_tokens": 58001,
+      "cost_usd": 2.99683,
+      "tps": 70.3,
+      "timeline": null,
+      "file": "games/cars-vs-canyon/fable-5.html",
+      "judge": {
+        "works": 9,
+        "fidelity": 10,
+        "polish": 9,
+        "creativity": 8,
+        "score": 9.2,
+        "verdict": "Complete, careful physics sim; only dead-code BLUE color bug (unused). Rich detail, meets every ask."
+      }
+    },
+    {
+      "model_key": "glm-5.2",
+      "provider": "openrouter",
+      "provider_model_id": "z-ai/glm-5.2",
+      "ok": false,
+      "error": "no html in response",
+      "ms": 867806,
+      "turns": 1,
+      "input_tokens": 274,
+      "output_tokens": 32000,
+      "cost_usd": 0.057885276,
+      "tps": 36.9,
+      "timeline": [
+        [
+          0,
+          0
+        ],
+        [
+          867806,
+          0
+        ]
+      ]
+    },
+    {
+      "model_key": "gpt-5.5",
+      "provider": "openrouter",
+      "provider_model_id": "openai/gpt-5.5",
+      "ok": false,
+      "error": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 32000 tokens, but can only afford 20761. To increase, visit https://openrouter.ai/workspaces/default/keys/4e27f56bf188954e72518606faa471bb9a922370dbe5f3093046f07914d81822 and adjust the key's monthly li",
+      "ms": 335,
+      "turns": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_usd": 0,
+      "tps": 0,
+      "timeline": null
+    },
+    {
+      "model_key": "opus-4.8",
+      "provider": "claude-cli",
+      "provider_model_id": "claude-opus-4-8",
+      "ok": true,
+      "error": null,
+      "ms": 898302,
+      "turns": 1,
+      "input_tokens": 3535,
+      "output_tokens": 63829,
+      "cost_usd": 1.631065,
+      "tps": 71.1,
+      "timeline": null,
+      "file": "games/cars-vs-canyon/opus-4.8.html",
+      "judge": {
+        "works": 9,
+        "fidelity": 10,
+        "polish": 9,
+        "creativity": 8,
+        "score": 9.2,
+        "verdict": "Polished canyon-jump sim, sound physics, rich desert art; both cars clear the gap"
+      }
+    },
+    {
+      "model_key": "grok-4.20",
+      "provider": "openrouter",
+      "provider_model_id": "x-ai/grok-4.20",
+      "ok": true,
+      "error": null,
+      "ms": 25599,
+      "turns": 1,
+      "input_tokens": 387,
+      "output_tokens": 5111,
+      "cost_usd": 0.01319405,
+      "tps": 199.7,
+      "timeline": [
+        [
+          0,
+          0
+        ],
+        [
+          952,
+          1
+        ],
+        [
+          1459,
+          109
+        ],
+        [
+          1925,
+          219
+        ],
+        [
+          2382,
+          306
+        ],
+        [
+          2795,
+          412
+        ],
+        [
+          3205,
+          464
+        ],
+        [
+          3609,
+          502
+        ],
+        [
+          4014,
+          585
+        ],
+        [
+          4421,
+          666
+        ],
+        [
+          4827,
+          720
+        ],
+        [
+          5233,
+          821
+        ],
+        [
+          5637,
+          939
+        ],
+        [
+          6038,
+          1043
+        ],
+        [
+          6438,
+          1127
+        ],
+        [
+          6850,
+          1203
+        ],
+        [
+          7275,
+          1285
+        ],
+        [
+          7675,
+          1385
+        ],
+        [
+          8093,
+          1476
+        ],
+        [
+          8509,
+          1560
+        ],
+        [
+          8916,
+          1644
+        ],
+        [
+          9320,
+          1735
+        ],
+        [
+          9722,
+          1844
+        ],
+        [
+          10125,
+          1932
+        ],
+        [
+          10526,
+          2023
+        ],
+        [
+          10931,
+          2134
+        ],
+        [
+          11337,
+          2254
+        ],
+        [
+          11738,
+          2334
+        ],
+        [
+          12140,
+          2416
+        ],
+        [
+          12561,
+          2503
+        ],
+        [
+          12970,
+          2621
+        ],
+        [
+          13372,
+          2686
+        ],
+        [
+          13819,
+          2767
+        ],
+        [
+          14222,
+          2874
+        ],
+        [
+          14632,
+          2953
+        ],
+        [
+          15135,
+          3017
+        ],
+        [
+          15545,
+          3144
+        ],
+        [
+          15956,
+          3220
+        ],
+        [
+          16361,
+          3294
+        ],
+        [
+          16769,
+          3363
+        ],
+        [
+          17179,
+          3459
+        ],
+        [
+          17579,
+          3545
+        ],
+        [
+          17989,
+          3626
+        ],
+        [
+          18396,
+          3711
+        ],
+        [
+          18797,
+          3774
+        ],
+        [
+          19199,
+          3850
+        ],
+        [
+          19599,
+          3912
+        ],
+        [
+          19999,
+          3987
+        ],
+        [
+          20406,
+          4093
+        ],
+        [
+          20814,
+          4183
+        ],
+        [
+          21235,
+          4254
+        ],
+        [
+          21840,
+          4311
+        ],
+        [
+          22248,
+          4486
+        ],
+        [
+          22661,
+          4559
+        ],
+        [
+          23095,
+          4628
+        ],
+        [
+          23511,
+          4727
+        ],
+        [
+          23920,
+          4804
+        ],
+        [
+          24326,
+          4882
+        ],
+        [
+          24726,
+          4956
+        ],
+        [
+          25141,
+          5031
+        ],
+        [
+          25599,
+          5111
+        ]
+      ],
+      "file": "games/cars-vs-canyon/grok-4.20.html",
+      "judge": {
+        "works": 5,
+        "fidelity": 6,
+        "polish": 5,
+        "creativity": 5,
+        "score": 5.3,
+        "verdict": "Runs, but jump falls short: cars dive off-screen into canyon then teleport to far ledge"
+      }
+    },
+    {
+      "model_key": "gemini-3.5-flash",
+      "provider": "openrouter",
+      "provider_model_id": "google/gemini-3.5-flash",
+      "ok": true,
+      "error": null,
+      "ms": 36311,
+      "turns": 1,
+      "input_tokens": 273,
+      "output_tokens": 7787,
+      "cost_usd": 0.0704925,
+      "tps": 214.5,
+      "timeline": [
+        [
+          0,
+          0
+        ],
+        [
+          953,
+          2
+        ],
+        [
+          1458,
+          97
+        ],
+        [
+          1927,
+          210
+        ],
+        [
+          2382,
+          286
+        ],
+        [
+          2842,
+          363
+        ],
+        [
+          3388,
+          462
+        ],
+        [
+          3808,
+          533
+        ],
+        [
+          4220,
+          625
+        ],
+        [
+          4786,
+          738
+        ],
+        [
+          5251,
+          837
+        ],
+        [
+          5700,
+          941
+        ],
+        [
+          6135,
+          1006
+        ],
+        [
+          6640,
+          1104
+        ],
+        [
+          7052,
+          1187
+        ],
+        [
+          7553,
+          1299
+        ],
+        [
+          7954,
+          1396
+        ],
+        [
+          11129,
+          1492
+        ],
+        [
+          25313,
+          1582
+        ],
+        [
+          25715,
+          1957
+        ],
+        [
+          26140,
+          2318
+        ],
+        [
+          26551,
+          2717
+        ],
+        [
+          26971,
+          3109
+        ],
+        [
+          27386,
+          3507
+        ],
+        [
+          27804,
+          3851
+        ],
+        [
+          28248,
+          4188
+        ],
+        [
+          28651,
+          4500
+        ],
+        [
+          29070,
+          4811
+        ],
+        [
+          29491,
+          5149
+        ],
+        [
+          29894,
+          5452
+        ],
+        [
+          30304,
+          5741
+        ],
+        [
+          30711,
+          5951
+        ],
+        [
+          31113,
+          6206
+        ],
+        [
+          31531,
+          6537
+        ],
+        [
+          31969,
+          6772
+        ],
+        [
+          32448,
+          6876
+        ],
+        [
+          32848,
+          6931
+        ],
+        [
+          33345,
+          7055
+        ],
+        [
+          33855,
+          7169
+        ],
+        [
+          34265,
+          7278
+        ],
+        [
+          34751,
+          7388
+        ],
+        [
+          35193,
+          7497
+        ],
+        [
+          35632,
+          7636
+        ],
+        [
+          36057,
+          7767
+        ],
+        [
+          36311,
+          7787
+        ]
+      ],
+      "file": "games/cars-vs-canyon/gemini-3.5-flash.html",
+      "judge": {
+        "works": 1,
+        "fidelity": 2,
+        "polish": 3,
+        "creativity": 3,
+        "score": 2,
+        "verdict": "Fatal bug: ACCELERATING never increments x, cars sit off-screen; only bg animates"
+      }
+    }
+  ]
+}

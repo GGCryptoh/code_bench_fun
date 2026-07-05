@@ -119,8 +119,8 @@
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
 
-  // race length for the slowest model, seconds; ?replay=12 shortens the cycle
-  let SCALE_MS = 20000;
+  // race length for the slowest model, seconds; ?replay=N overrides
+  let SCALE_MS = 8000;
   const replayParam = parseFloat(params.get("replay"));
   if (replayParam >= 5 && replayParam <= 120) SCALE_MS = replayParam * 1000;
   const alwaysLoop = params.get("loop") === "1";

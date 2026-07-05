@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canyon Jumper</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&amp;display=swap');
+        
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Press Start 2P', system-ui;
+        }
+        
+        canvas {
+            display: block;
+            box-shadow: 0 0 40px rgba(255, 140, 0, 0.6);
+            image-rendering: pixelated;
+        }
+        
+        .title {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff4400;
+            font-size: 22px;
+            text-shadow: 0 0 15px #ff8800,
+                        3px 3px 0 #000,
+                        -3px -3px 0 #000;
+            pointer-events: none;
+            z-index: 10;
+            letter-spacing: 4px;
+            animation: titlepulse 3s infinite alternate;
+        }
+        
+        @keyframes titlepulse {
+            from { opacity: 0.7; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="c"></canvas>
+    <div class="title">CANYON DASH</div>
+    
+    <script>
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+        
+        let W = 800;
+        let H = 600;
+        canvas.width = W;
+        canvas.height = H;
+        
+        // Game constants
+        const GRAVITY = 0.42;
+        const GROUND_Y = 420;
+        const CANYON_START = 520;
+        const CANYON_END = 1050;
+        const RAMP_X = 380;
+        
+        // Colors
+        const SKY_TOP = '#0b1428';
+        const SKY_BOT = '#ff9a4d';
+        const SUN_COLOR = '#ffe600';
+        const GROUND_COLOR = '#3a2c1f';
+        const GRASS_COLOR = '#1e5a2a';
+        
+        // Particles arrays
+        let dustParticles = [];
+        let debrisParticles = [];
+        let cloudParticles = [];
+        
+        class Cloud {
+            constructor() {
+                this.x = Math.random() * W * 2;
+                this.y = 80 + Math.random() * 110;
+                this.size = 40 + Math.random() * 50;
+                this.speed = 0.1 + Math.random() * 0.2;
+            }
+            
+            update() {
+                this.x -= this.speed;
+                if (this.x < -200) this.x = W + 200 + Math.random() * 300;
+            }
+            
+            draw() {
+                ctx.globalAlpha = 0.75;
+                ctx.fillStyle = '#f0f0f0';
+                const s = this.size;
+                ctx.fillRect(this.x, this.y, s * 2, s * 0.6);
+                ctx.fillRect(this.x - s * 0.3, this.y - s * 0.3, s * 0.8, s * 0.8);
+                ctx.fillRect(this.x + s * 1.1, this.y - s * 0.25, s * 0.9, s * 0.75);
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        class Particle {
+            constructor(x, y, vx, vy, life, color, size) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.life = life;
+                this.maxLife = life;
+                this.color = color;
+                this.size = size;
+                this.gravity = 0.05;
+            }
+            
+            update() {
+                this.vy += this.gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life--;
+                this.vx *= 0.98;
+            }
+            
+            draw() {
+                const alpha = this.life / this.maxLife;
+                ctx.globalAlpha = alpha * 0.9;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        class Car {
+            constructor(color, offset) {
+                this.color = color;
+                this.offset = offset;
+                this.reset();
+            }
+            
+            reset() {
+                this.x = -80 + Math.random() * 30;
+                this.baseSpeed = 5.8 + Math.random() * 1.2;
+                this.speed = this.baseSpeed;
+                this.y = GROUND_Y - 36;
+                this.vy = 0;
+                this.angle = 0;
+                this.onGround = true;
+                this.suspension = 0;
+                this.wheelRot = 0;
+                this.airTime = 0;
+                this.isBlue = this.color === '#2277ff';
+                this.trail = [];
+            }
+            
+            update() {
+                if (this.onGround && this.x < RAMP_X - 40) {
+                    this.speed = this.baseSpeed * (1 + Math.sin(Date.now() / 200) * 0.03);
+                }
+                
+                this.x += this.speed;
+                
+                // Ramp physics
+                if (this.x > RAMP_X - 10 && this.x < RAMP_X + 60 && this.onGround) {
+                    const rampHeight = Math.max(0, (this.x - RAMP_X + 40) * 0.6);
+                    this.y = GROUND_Y - 36 - rampHeight;
+                    
+                    if (rampHeight > 22) {
+                        this.onGround = false;
+                        this.vy = -11.5 - Math.random() * 1.5;
+                        this.angle = -0.3;
+                        this.speed = this.speed * 0.96;
+                    }
+                }
+                
+                if (!this.onGround) {
+                    this.vy += GRAVITY;
+                    this.y += this.vy;
+                    this.angle = Math.max(-0.7, Math.min(0.9, this.angle + 0.028));
+                    this.airTime++;
+                    
+                    // Air dust
+                    if (this.airTime % 6 === 0 && Math.random() > 0.5) {
+                        dustParticles.push(new Particle(
+                            this.x + 18, this.y + 50,
+                            -2 + Math.random() * 3,
+                            -1 + Math.random() * 3,
+                            22, '#e8d2a0', 4
+                        ));
+                    }
+                } else {
+                    // Ground movement
+                    this.angle *= 0.6;
+                    this.y = GROUND_Y - 36;
+                    this.suspension = Math.sin(this.x * 0.3) * 1.8;
+                    this.wheelRot += this.speed * 0.1;
+                    
+                    // Dust when driving
+                    if (Math.random() < 0.6) {
+                        const dustX = this.x + (Math.random() * 50 - 10);
+                        dustParticles.push(new Particle(
+                            dustX, GROUND_Y + 6,
+                            -3 - Math.random() * 3,
+                            -2 - Math.random() * 4,
+                            16 + Math.random() * 14,
+                            '#e8d2a0', 3.5 + Math.random() * 3
+                        ));
+                    }
+                }
+                
+                // Canyon bounds
+                if (this.x > CANYON_END + 200) {
+                    this.reset();
+                }
+                
+                // Landing detection
+                if (!this.onGround && this.y >= GROUND_Y - 36 && this.x > CANYON_END) {
+                    this.y = GROUND_Y - 36;
+                    this.onGround = true;
+                    this.vy = 0;
+                    this.angle = 0.3;
+                    
+                    // Heavy landing particles
+                    for (let i = 0; i < 32; i++) {
+                        const vx = -4 + Math.random() * 9;
+                        const vy = -7 - Math.random() * 6;
+                        debrisParticles.push(new Particle(
+                            this.x + 20, this.y + 38,
+                            vx, vy,
+                            38 + Math.random() * 22,
+                            (Math.random() > 0.5) ? '#665544' : '#3a2c1f',
+                            5 + Math.random() * 6
+                        ));
+                    }
+                    
+                    // Dust explosion
+                    for (let i = 0; i < 45; i++) {
+                        dustParticles.push(new Particle(
+                            this.x + (Math.random() * 60 - 15),
+                            GROUND_Y + 4,
+                            -6 + Math.random() * 14,
+                            -7 - Math.random() * 7,
+                            30 + Math.random() * 32,
+                            '#e8d2a0',
+                            4 + Math.random() * 8
+                        ));
+                    }
+                }
+                
+                // Add to trail for motion blur
+                if (this.trail.length > 8) this.trail.shift();
+                this.trail.push({x: this.x, y: this.y, angle: this.angle});
+            }
+            
+            draw() {
+                ctx.save();
+                const drawX = this.x;
+                const drawY = this.y + this.suspension;
+                
+                ctx.translate(drawX + 38, drawY + 30);
+                ctx.rotate(this.angle);
+                
+                // Shadow
+                if (!this.onGround) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.fillRect(-12, 38, 78, 16);
+                }
+                
+                // Car body
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-28, -22, 78, 26);           // main body
+                
+                // Cabin
+                ctx.fillStyle = this.isBlue ? '#113366' : '#660000';
+                ctx.fillRect(-8, -34, 38, 18);
+                
+                // Window highlight
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                ctx.fillRect(4, -31, 12, 8);
+                
+                // Rear spoiler
+                ctx.fillStyle = '#111';
+                ctx.fillRect(-32, -29, 12, 7);
+                
+                // Wheels
+                ctx.fillStyle = '#111111';
+                // Rear wheel
+                ctx.save();
+                ctx.translate(-14, 12);
+                ctx.rotate(this.wheelRot);
+                ctx.fillRect(-9, -9, 18, 18);
+                ctx.fillStyle = '#ddd';
+                ctx.fillRect(-5, -5, 10, 10);
+                ctx.restore();
+                
+                // Front wheel
+                ctx.fillStyle = '#111111';
+                ctx.save();
+                ctx.translate(30, 12);
+                ctx.rotate(this.wheelRot * 1.1);
+                ctx.fillRect(-9, -9, 18, 18);
+                ctx.fillStyle = '#ddd';
+                ctx.fillRect(-5, -5, 10, 10);
+                ctx.restore();
+                
+                // Headlights
+                ctx.fillStyle = '#ffee88';
+                ctx.fillRect(38, -14, 8, 6);
+                ctx.fillRect(38, 0, 8, 6);
+                
+                // Red tail lights
+                if (!this.isBlue) {
+                    ctx.fillStyle = '#ff2222';
+                    ctx.fillRect(-34, -14, 6, 6);
+                }
+                
+                ctx.restore();
+            }
+        }
+        
+        // Create cars
+        let redCar = new Car('#e22', 0);
+        let blueCar = new Car('#2277ff', 26);
+        
+        // Create clouds
+        function createClouds() {
+            cloudParticles = [];
+            for (let i = 0; i < 9; i++) {
+                cloudParticles.push(new Cloud());
+            }
+        }
+        
+        // Background hills
+        function drawBackground() {
+            // Sky gradient
+            const sky = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+            sky.addColorStop(0, SKY_TOP);
+            sky.addColorStop(0.6, '#ff7a2e');
+            sky.addColorStop(1, SKY_BOT);
+            ctx.fillStyle = sky;
+            ctx.fillRect(0, 0, W, GROUND_Y);
+            
+            // Sun
+            ctx.fillStyle = SUN_COLOR;
+            ctx.globalAlpha = 0.9;
+            ctx.beginPath();
+            ctx.arc(620, 110, 42, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Sun glow
+            ctx.globalAlpha = 0.2;
+            ctx.beginPath();
+            ctx.arc(620, 110, 72, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            
+            // Clouds
+            for (let i = 0; i < cloudParticles.length; i++) {
+                cloudParticles[i].update();
+                cloudParticles[i].draw();
+            }
+            
+            // Distant mountain
+            ctx.fillStyle = '#2c3a4a';
+            ctx.beginPath();
+            ctx.moveTo(0, GROUND_Y);
+            ctx.lineTo(120, 220);
+            ctx.lineTo(310, 310);
+            ctx.lineTo(520, 170);
+            ctx.lineTo(730, 290);
+            ctx.lineTo(920, 210);
+            ctx.lineTo(W, 270);
+            ctx.lineTo(W, GROUND_Y);
+            ctx.fill();
+            
+            // Closer mountain
+            ctx.fillStyle = '#1f2a35';
+            ctx.beginPath();
+            ctx.moveTo(-30, GROUND_Y);
+            ctx.lineTo(210, 180);
+            ctx.lineTo(450, 270);
+            ctx.lineTo(640, 150);
+            ctx.lineTo(810, 250);
+            ctx.lineTo(W + 30, GROUND_Y);
+            ctx.fill();
+            
+            // Ground plateau (left side)
+            ctx.fillStyle = GROUND_COLOR;
+            ctx.fillRect(0, GROUND_Y, CANYON_START, H - GROUND_Y);
+            
+            // Grass edge on left
+            ctx.fillStyle = GRASS_COLOR;
+            ctx.fillRect(0, GROUND_Y - 18, CANYON_START + 30, 26);
+            
+            // Canyon floor (very deep)
+            ctx.fillStyle = '#2c2118';
+            ctx.fillRect(CANYON_START, GROUND_Y + 60, CANYON_END - CANYON_START, H);
+            
+            // Canyon walls
+            ctx.fillStyle = '#4a3a2a';
+            // left wall
+            ctx.beginPath();
+            ctx.moveTo(CANYON_START, GROUND_Y);
+            ctx.lineTo(CANYON_START - 40, H);
+            ctx.lineTo(CANYON_START + 60, H);
+            ctx.fill();
+            
+            // right wall
+            ctx.beginPath();
+            ctx.moveTo(CANYON_END, GROUND_Y);
+            ctx.lineTo(CANYON_END + 70, H);
+            ctx.lineTo(CANYON_END - 20, H);
+            ctx.fill();
+            
+            // Right side ground
+            ctx.fillStyle = GROUND_COLOR;
+            ctx.fillRect(CANYON_END, GROUND_Y, W - CANYON_END + 10, H - GROUND_Y);
+            
+            // Grass edge on right
+            ctx.fillStyle = GRASS_COLOR;
+            ctx.fillRect(CANYON_END - 10, GROUND_Y - 18, W - CANYON_END + 60, 26);
+            
+            // Ramp on left
+            ctx.fillStyle = '#555';
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.moveTo(RAMP_X - 20, GROUND_Y + 2);
+            ctx.lineTo(RAMP_X + 72, GROUND_Y + 2);
+            ctx.lineTo(RAMP_X + 40, GROUND_Y - 72);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Ramp highlight edge
+            ctx.strokeStyle = '#777';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(RAMP_X - 15, GROUND_Y - 8);
+            ctx.lineTo(RAMP_X + 62, GROUND_Y - 8);
+            ctx.stroke();
+        }
+        
+        function drawGroundDetail() {
+            // Road dashes
+            ctx.strokeStyle = '#ffe040';
+            ctx.lineWidth = 6;
+            for (let i = -2; i < 7; i++) {
+                const dashX = 60 + i * 110;
+                if (dashX > CANYON_START - 60 && dashX < CANYON_END + 60) continue;
+                ctx.beginPath();
+                ctx.moveTo(dashX, GROUND_Y + 24);
+                ctx.lineTo(dashX + 46, GROUND_Y + 24);
+                ctx.stroke();
+            }
+            
+            // Left grass tufts
+            ctx.fillStyle = '#1e5a2a';
+            for (let i = 0; i < 14; i++) {
+                const gx = 26 + i * 43;
+                ctx.fillRect(gx, GROUND_Y - 26, 8, 26);
+                ctx.fillRect(gx + 6, GROUND_Y - 36, 5, 16);
+            }
+            
+            // Right grass tufts
+            for (let i = 0; i < 9; i++) {
+                const gx = CANYON_END + 40 + i * 53;
+                ctx.fillRect(gx, GROUND_Y - 26, 8, 26);
+                ctx.fillRect(gx + 8, GROUND_Y - 34, 6, 18);
+            }
+        }
+        
+        function updateParticles() {
+            for (let i = dustParticles.length - 1; i >= 0; i--) {
+                const p = dustParticles[i];
+                p.update();
+                if (p.life <= 0) dustParticles.splice(i, 1);
+            }
+            
+            for (let i = debrisParticles.length - 1; i >= 0; i--) {
+                const p = debrisParticles[i];
+                p.update();
+                if (p.life <= 0) debrisParticles.splice(i, 1);
+            }
+        }
+        
+        function drawParticles() {
+            for (let i = 0; i < dustParticles.length; i++) {
+                dustParticles[i].draw();
+            }
+            for (let i = 0; i < debrisParticles.length; i++) {
+                debrisParticles[i].draw();
+            }
+        }
+        
+        function drawCanyonHighlights() {
+            // Inner canyon glow
+            const grad = ctx.createLinearGradient(CANYON_START, GROUND_Y, CANYON_START + 120, H);
+            grad.addColorStop(0, 'transparent');
+            grad.addColorStop(1, 'rgba(220, 80, 10, 0.12)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(CANYON_START - 60, GROUND_Y, 160, H - GROUND_Y);
+            
+            const grad2 = ctx.createLinearGradient(CANYON_END, GROUND_Y, CANYON_END - 120, H);
+            grad2.addColorStop(0, 'transparent');
+            grad2.addColorStop(1, 'rgba(220, 80, 10, 0.12)');
+            ctx.fillStyle = grad2;
+            ctx.fillRect(CANYON_END - 110, GROUND_Y, 160, H - GROUND_Y);
+        }
+        
+        let time = 0;
+        
+        function loop() {
+            time += 0.016;
+            
+            // Clear
+            ctx.clearRect(0, 0, W, H);
+            
+            drawBackground();
+            
+            // Update cars
+            redCar.update();
+            blueCar.update();
+            
+            // Occasionally vary the blue car speed
+            if (Math.random() < 0.015) {
+                blueCar.baseSpeed = 6.2 + Math.random() * 1.6;
+            }
+            
+            drawGroundDetail();
+            drawCanyonHighlights();
+            
+            updateParticles();
+            drawParticles();
+            
+            // Draw cars
+            redCar.draw();
+            blueCar.draw();
+            
+            // Occasional exhaust smoke from both cars
+            if (Math.random() < 0.3) {
+                const rx = redCar.x - 16;
+                const ry = redCar.y + 22;
+                dustParticles.push(new Particle(rx, ry, -3.5 - Math.random() * 2, -1, 24, '#999', 4));
+            }
+            
+            if (Math.random() < 0.3) {
+                const bx = blueCar.x - 16;
+                const by = blueCar.y + 26;
+                dustParticles.push(new Particle(bx, by, -3.2 - Math.random() * 2.5, -0.8, 22, '#999', 3.5));
+            }
+            
+            // Very rare big dust cloud on left side
+            if (Math.random() < 0.008) {
+                for (let k = 0; k < 14; k++) {
+                    const dx = 40 + Math.random() * 240;
+                    dustParticles.push(new Particle(
+                        dx,
+                        GROUND_Y + 12,
+                        -1.5 + Math.random() * 4,
+                        -6 - Math.random() * 4.5,
+                        55,
+                        '#eeddaa',
+                        12
+                    ));
+                }
+            }
+            
+            // Reset cars if they somehow go off the right
+            if (redCar.x > W * 2) redCar.reset();
+            if (blueCar.x > W * 2) blueCar.reset();
+            
+            // Draw a simple HUD line
+            ctx.strokeStyle = 'rgba(255,240,180,0.2)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(40, 40);
+            ctx.lineTo(220, 40);
+            ctx.stroke();
+            
+            ctx.fillStyle = 'rgba(255,255,255,0.75)';
+            ctx.font = '11px monospace';
+            ctx.fillText('SPEED', 52, 54);
+            
+            requestAnimationFrame(loop);
+        }
+        
+        // Initialize
+        function init() {
+            createClouds();
+            
+            // Give initial push so cars are on their way
+            redCar.x = 80;
+            blueCar.x = 30;
+            blueCar.baseSpeed = 6.8;
+            
+            // Seed some dust
+            for (let i = 0; i < 20; i++) {
+                const px = Math.random() * W;
+                dustParticles.push(new Particle(
+                    px, GROUND_Y + Math.random() * 30,
+                    -1 + Math.random() * 3,
+                    -1 - Math.random() * 3,
+                    30,
+                    '#eeddaa',
+                    4
+                ));
+            }
+            
+            loop();
+        }
+        
+        window.onload = init;
+    </script>
+</body>
+</html>

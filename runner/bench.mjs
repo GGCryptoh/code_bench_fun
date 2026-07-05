@@ -53,7 +53,7 @@ const OPENROUTER_HEADERS_EXTRA = {
   "HTTP-Referer": "https://ggcryptoh.github.io/code_bench_fun",
   "X-Title": "Code Bench Fun",
 };
-const OPENROUTER_MAX_TOKENS = 32000;
+const OPENROUTER_MAX_TOKENS = 48000; // thinking models burn reasoning tokens from this same budget
 
 const CLI_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes — big one-shot games via claude CLI can run long
 const PROGRESS_INTERVAL_MS = 5000;
@@ -113,6 +113,7 @@ const FLAG_SPECS = {
   "--prompt-file": "value",
   "--judge-provider": "value",
   "--force-openrouter": "boolean",
+  "--merge": "boolean",
   "--out-dir": "value",
   "--help": "boolean",
 };
@@ -150,6 +151,8 @@ Optional:
   --prompt-file       read the prompt from a file instead of --prompt
   --judge-provider    claude-cli (default) | openrouter
   --force-openrouter  route every model through OpenRouter, even ones with a cli_id
+  --merge             re-run ONLY --models into an existing run (prompt/title/kind reused
+                      from data/runs/<id>.json; other builds kept as-is)
   --out-dir           repo root to write into (default: parent of this script's directory)
 
 Known model keys: ${Object.keys(MODELS).join(", ")}`;
@@ -211,7 +214,7 @@ function parseArgs(argv) {
       fail(`Could not read --prompt-file: ${err.message}`);
     }
   }
-  if (!prompt || !prompt.trim()) fail("Missing --prompt or --prompt-file (with non-empty content)");
+  if ((!prompt || !prompt.trim()) && !raw["--merge"]) fail("Missing --prompt or --prompt-file (with non-empty content)");
 
   const judgeProvider = raw["--judge-provider"] || "claude-cli";
   if (judgeProvider !== "claude-cli" && judgeProvider !== "openrouter") {
@@ -229,6 +232,9 @@ function parseArgs(argv) {
     prompt,
     judgeProvider,
     forceOpenrouter: !!raw["--force-openrouter"],
+    merge: !!raw["--merge"],
+    rawTitle: raw["--title"] || null,
+    rawKind: raw["--kind"] || null,
     outDir,
   };
 }
@@ -473,6 +479,9 @@ async function runOpenRouterBuild({ runId, modelKey, entry, prompt }) {
     stream_options: { include_usage: true },
     usage: { include: true },
     max_tokens: OPENROUTER_MAX_TOKENS,
+    // Cap thinking so reasoning models don't spend the whole token budget before writing HTML.
+    // OpenRouter drops this for models without reasoning support.
+    reasoning: { effort: "medium" },
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: prompt },
@@ -486,32 +495,54 @@ async function runOpenRouterBuild({ runId, modelKey, entry, prompt }) {
     return { build: makeFailedBuild(modelKey, "openrouter", providerModelId, 0, err.message), html: null };
   }
 
-  let res;
-  try {
-    res = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      signal: globalAbort.signal,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...OPENROUTER_HEADERS_EXTRA,
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    return {
-      build: makeFailedBuild(modelKey, "openrouter", providerModelId, Date.now() - startedAt, `network error: ${err.message}`),
-      html: null,
-    };
-  }
+  let res = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      res = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        signal: globalAbort.signal,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          ...OPENROUTER_HEADERS_EXTRA,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      return {
+        build: makeFailedBuild(modelKey, "openrouter", providerModelId, Date.now() - startedAt, `network error: ${err.message}`),
+        html: null,
+      };
+    }
 
-  if (!res.ok || !res.body) {
+    if (res.ok && res.body) break;
+
     const text = await res.text().catch(() => "");
+
+    // 402 = the key's spend limit can't pre-authorize max_tokens; clamp to what it can afford and retry.
+    const afford = res.status === 402 && text.match(/can only afford (\d+)/);
+    if (afford && Number(afford[1]) > 4000) {
+      body.max_tokens = Number(afford[1]) - 500;
+      process.stderr.write(`[${modelKey}] 402 spend-limit — retrying with max_tokens=${body.max_tokens}\n`);
+      continue;
+    }
+    // Some providers reject the reasoning param outright — drop it and retry once.
+    if (res.status === 400 && /reasoning/i.test(text) && body.reasoning) {
+      delete body.reasoning;
+      process.stderr.write(`[${modelKey}] provider rejected reasoning param — retrying without it\n`);
+      continue;
+    }
     return {
       build: makeFailedBuild(
         modelKey, "openrouter", providerModelId, Date.now() - startedAt,
         `HTTP ${res.status}: ${text.slice(0, 300)}`
       ),
+      html: null,
+    };
+  }
+  if (!res || !res.ok || !res.body) {
+    return {
+      build: makeFailedBuild(modelKey, "openrouter", providerModelId, Date.now() - startedAt, "request failed after retries"),
       html: null,
     };
   }
@@ -821,9 +852,28 @@ async function main() {
   installSigintHandler();
   const opts = parseArgs(process.argv.slice(2));
 
+  // --merge: re-run a subset of models into an existing run, reusing its prompt/title/kind.
+  let existingRun = null;
+  if (opts.merge) {
+    const runPath = path.join(opts.outDir, "data", "runs", `${opts.id}.json`);
+    try {
+      existingRun = JSON.parse(await fs.readFile(runPath, "utf8"));
+    } catch {
+      console.error(`--merge: could not read existing run at ${runPath}`);
+      process.exit(1);
+    }
+    if (!opts.prompt) opts.prompt = existingRun.prompt;
+    if (!opts.rawTitle) opts.title = existingRun.title || opts.title;
+    if (!opts.rawKind) opts.kind = existingRun.kind || opts.kind;
+    if (!opts.prompt || !opts.prompt.trim()) {
+      console.error("--merge: existing run has no prompt and none was given");
+      process.exit(1);
+    }
+  }
+
   process.stderr.write(
     `[bench] id=${opts.id} kind=${opts.kind} models=${opts.models.join(",")} judge=${opts.judgeProvider}` +
-      (opts.forceOpenrouter ? " (forced openrouter)" : "") + "\n"
+      (opts.forceOpenrouter ? " (forced openrouter)" : "") + (opts.merge ? " (merge)" : "") + "\n"
   );
 
   const settled = await Promise.allSettled(
@@ -854,8 +904,17 @@ async function main() {
     })
   );
 
-  const builds = entries.map((e) => e.build);
-  const created = new Date().toISOString();
+  let builds = entries.map((e) => e.build);
+  let created = new Date().toISOString();
+
+  if (existingRun) {
+    // Keep untouched builds in their original order; replace re-run ones in place, append new keys.
+    const rerun = new Map(builds.map((b) => [b.model_key, b]));
+    const merged = (existingRun.builds || []).map((b) => (rerun.has(b.model_key) ? rerun.get(b.model_key) : b));
+    for (const b of builds) if (!(existingRun.builds || []).some((x) => x.model_key === b.model_key)) merged.push(b);
+    builds = merged;
+    created = existingRun.created || created;
+  }
 
   await writeGameFiles(opts.outDir, opts.id, entries);
 

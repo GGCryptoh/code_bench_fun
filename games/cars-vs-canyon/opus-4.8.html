@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Canyon Jump</title>
+<style>
+ html,body{margin:0;height:100%;overflow:hidden;background:#182a4a;}
+ #c{display:block;width:100%;height:100%;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(function(){
+ const cv=document.getElementById('c');
+ const ctx=cv.getContext('2d');
+ let W=0,H=0,DPR=1,S=1,originX=0;
+ const WORLD_H=1000, CENTER=500;
+ function resize(){
+   DPR=Math.min(window.devicePixelRatio||1,2);
+   W=window.innerWidth; H=window.innerHeight;
+   cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+   cv.style.width=W+'px'; cv.style.height=H+'px';
+   ctx.setTransform(DPR,0,0,DPR,0,0);
+   S=H/WORLD_H;
+   originX=W/2-CENTER*S;
+ }
+ window.addEventListener('resize',resize); resize();
+ const W2SX=wx=>originX+wx*S, W2SY=wy=>wy*S, S2WX=sx=>(sx-originX)/S;
+ const rand=(a,b)=>a+Math.random()*(b-a);
+ const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+
+ /* ---- terrain ---- */
+ const G_LEFT=705, RAMP_X0=305, LIP_X=430, LIP_Y=560, RIGHT_X=690, MESA_Y=618;
+ const RSLOPE=(LIP_Y-G_LEFT)/(LIP_X-RAMP_X0);
+ const GRAV=0.5, WHEELR=27, WB=98;
+ function terrainY(x){
+   if(x<RAMP_X0) return G_LEFT;
+   if(x<LIP_X){ return G_LEFT+(LIP_Y-G_LEFT)*((x-RAMP_X0)/(LIP_X-RAMP_X0)); }
+   if(x<RIGHT_X) return null;
+   return MESA_Y;
+ }
+ function terrainSlope(x){
+   if(x<RAMP_X0) return 0;
+   if(x<LIP_X) return RSLOPE;
+   return 0;
+ }
+
+ /* ---- state ---- */
+ function makeCar(colors){ return {col:colors,x:-140,y:0,vx:0,targetVx:8.5,vy:0,phase:'run',grounded:true,angle:0,susp:0,suspV:0,wheelSpin:0,doneT:0}; }
+ const red=makeCar({body:'#e2382f',dark:'#9e211b',light:'#ff8b72',glass:'#bfe2ff',trim:'#ffd24d',tail:'#ff5a48'});
+ const blue=makeCar({body:'#2f7fe6',dark:'#194f9c',light:'#8ec2ff',glass:'#d7edff',trim:'#ffd24d',tail:'#ff6a58'});
+ const cars=[red,blue];
+ let parts=[];
+ let sunPhase=0;
+
+ const clouds=[];
+ for(let i=0;i<8;i++){ const layer=i<3?0:(i<6?1:2);
+   clouds.push({x:rand(-300,1300),y:rand(70,300)-layer*8,s:1.4-layer*0.32+rand(-0.15,0.15),spd:(0.09+layer*0.06)*rand(0.85,1.2),a:0.92-layer*0.22}); }
+
+ const strata=[];
+ for(let y=580;y<1260;y+=20+(y-560)*0.05){ strata.push({y:y,a:0.10+Math.random()*0.16,h:6+Math.random()*10,tint:Math.random()<0.5}); }
+
+ const tufts=[];
+ for(let x=-380;x<RAMP_X0-14;x+=rand(28,66)) tufts.push({x:x,seg:'L'});
+ for(let x=RIGHT_X+16;x<1420;x+=rand(28,66)) tufts.push({x:x,seg:'R'});
+ const pebbles=[];
+ for(let x=-380;x<RAMP_X0-10;x+=rand(20,55)) pebbles.push({x:x,seg:'L',dy:rand(4,22),r:rand(1.5,4)});
+ for(let x=RIGHT_X+12;x<1420;x+=rand(20,55)) pebbles.push({x:x,seg:'R',dy:rand(4,22),r:rand(1.5,4)});
+
+ /* ---- particles ---- */
+ function spawnRunDust(car){
+   const rx=car.x-(WB*0.5)*Math.cos(car.angle);
+   const ty=terrainY(car.x); if(ty===null)return;
+   parts.push({t:'dust',x:rx+rand(-6,6),y:ty-4,vx:-car.vx*0.14+rand(-0.4,0.4),vy:rand(-0.9,-0.2),r:rand(7,14),life:1,dr:rand(0.4,0.9)});
+ }
+ function spawnLaunchBurst(car){
+   for(let i=0;i<14;i++) parts.push({t:'dust',x:LIP_X+rand(-12,4),y:LIP_Y+rand(-4,12),vx:rand(-2,-0.2)+car.vx*0.1,vy:rand(-2.6,-0.3),r:rand(10,22),life:1,dr:rand(0.5,1.1)});
+   for(let i=0;i<6;i++) parts.push({t:'deb',x:LIP_X+rand(-8,2),y:LIP_Y,vx:rand(-3,-0.4),vy:rand(-4,-1),r:rand(3,6),rot:rand(0,6),vr:rand(-0.3,0.3),life:1});
+ }
+ function spawnLandBurst(car,impact){
+   const gy=terrainY(car.x); if(gy===null)return;
+   const n=Math.min(32,14+impact*1.6);
+   for(let i=0;i<n;i++){ const dir=Math.random()<0.5?-1:1;
+     parts.push({t:'dust',x:car.x+rand(-20,20),y:gy-4,vx:dir*rand(0.5,3.6)+car.vx*0.05,vy:rand(-3.6,-0.4),r:rand(12,26),life:1,dr:rand(0.6,1.3)}); }
+   for(let i=0;i<Math.min(18,8+impact);i++)
+     parts.push({t:'deb',x:car.x+rand(-14,14),y:gy-2,vx:rand(-4,5),vy:rand(-6,-1.5),r:rand(3,7),rot:rand(0,6),vr:rand(-0.4,0.4),life:1,ground:gy});
+ }
+ function stepParts(){
+   for(let i=parts.length-1;i>=0;i--){ const p=parts[i];
+     if(p.t==='dust'){ p.x+=p.vx; p.y+=p.vy; p.vx*=0.96; p.vy=p.vy*0.96-0.02; p.r+=p.dr; p.life-=0.012; }
+     else { p.x+=p.vx; p.vy+=0.35; p.y+=p.vy; p.vx*=0.99; p.rot+=p.vr; p.life-=0.01;
+       const g=p.ground!==undefined?p.ground:terrainY(p.x);
+       if(g!==null&&g!==undefined&&p.y>g&&p.vy>0){ p.y=g; p.vy*=-0.34; p.vx*=0.6; if(Math.abs(p.vy)<0.5)p.vy=0; } }
+     if(p.life<=0||p.y>WORLD_H+240) parts.splice(i,1);
+   }
+   if(parts.length>500) parts.splice(0,parts.length-500);
+ }
+
+ /* ---- car physics ---- */
+ function spawnRun(){
+   const base=8.5, stagger=35+Math.random()*60, redBehind=Math.random()<0.5;
+   cars.forEach((c,i)=>{
+     c.targetVx=base+rand(-0.7,0.7); c.vx=c.targetVx*0.5;
+     c.phase='run'; c.grounded=true; c.vy=0; c.angle=0; c.susp=0; c.suspV=0; c.doneT=0;
+     const behind=((i===0)===redBehind);
+     c.x=-130-(behind?stagger:0)-rand(0,15);
+     c.y=terrainY(c.x)-WHEELR;
+   });
+ }
+ function stepCar(car){
+   const target=car.grounded?0:-7;
+   car.suspV+=(target-car.susp)*0.09-car.suspV*0.16;
+   car.susp+=car.suspV;
+   if(car.susp<-12){car.susp=-12;car.suspV=0;}
+   if(car.susp>26){car.susp=26;car.suspV*=-0.2;}
+
+   if(car.phase==='run'){
+     car.grounded=true;
+     car.vx+=(car.targetVx-car.vx)*0.04; car.x+=car.vx;
+     car.y=terrainY(car.x)-WHEELR;
+     car.angle=Math.atan(terrainSlope(car.x));
+     car.wheelSpin+=car.vx/WHEELR;
+     if(Math.random()<0.25&&car.vx>4) spawnRunDust(car);
+     if(car.x>=LIP_X){
+       car.phase='air'; car.grounded=false;
+       car.vy=car.vx*RSLOPE; car.x=LIP_X; car.y=LIP_Y-WHEELR;
+       spawnLaunchBurst(car);
+     }
+   } else if(car.phase==='air'){
+     car.vx*=0.9995; car.x+=car.vx; car.vy+=GRAV; car.y+=car.vy;
+     let ta=clamp(Math.atan2(car.vy,car.vx),-0.6,0.9);
+     car.angle+=(ta-car.angle)*0.12;
+     car.wheelSpin+=0.25;
+     const ty=terrainY(car.x);
+     if(ty!==null&&car.y>=ty-WHEELR){
+       car.y=ty-WHEELR; car.grounded=true;
+       const impact=car.vy; car.suspV+=impact*0.7; car.vy=0;
+       car.phase='roll'; car.angle*=0.3; spawnLandBurst(car,impact);
+     }
+   } else if(car.phase==='roll'){
+     car.grounded=true; car.vx*=0.985; car.x+=car.vx;
+     const ty=terrainY(car.x); if(ty!==null)car.y=ty-WHEELR;
+     car.angle+=(Math.atan(terrainSlope(car.x))-car.angle)*0.2;
+     car.wheelSpin+=car.vx/WHEELR;
+     if(Math.random()<0.14&&car.vx>2) spawnRunDust(car);
+     if(car.x>S2WX(W)+140||car.vx<0.4){ car.phase='done'; car.doneT=0; }
+   } else { car.doneT++; car.vx*=0.9; car.x+=car.vx; }
+ }
+ function physicsStep(){
+   sunPhase+=0.0025;
+   for(const c of clouds){ c.x-=c.spd; if(c.x<-460)c.x=1360; }
+   for(const car of cars) stepCar(car);
+   stepParts();
+   if(cars[0].phase==='done'&&cars[1].phase==='done'&&cars[0].doneT>25&&cars[1].doneT>25) spawnRun();
+ }
+
+ /* ---- rendering ---- */
+ function drawSky(){
+   const g=ctx.createLinearGradient(0,0,0,H);
+   g.addColorStop(0,'#26406f'); g.addColorStop(0.34,'#6b83b2'); g.addColorStop(0.55,'#cf9670');
+   g.addColorStop(0.66,'#f2bd7d'); g.addColorStop(0.74,'#ffe0a6'); g.addColorStop(1,'#ffe9bd');
+   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+ }
+ function drawSun(){
+   const sx=W2SX(250), sy=W2SY(200), R=140*S;
+   let g=ctx.createRadialGradient(sx,sy,0,sx,sy,R*3.4);
+   g.addColorStop(0,'rgba(255,245,216,0.95)'); g.addColorStop(0.12,'rgba(255,224,150,0.8)');
+   g.addColorStop(0.4,'rgba(255,190,120,0.26)'); g.addColorStop(1,'rgba(255,180,110,0)');
+   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+   ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.translate(sx,sy); ctx.rotate(sunPhase*0.15);
+   for(let i=0;i<14;i++){ ctx.rotate(Math.PI*2/14);
+     const rg=ctx.createLinearGradient(0,0,0,-R*3);
+     rg.addColorStop(0,'rgba(255,232,172,0.07)'); rg.addColorStop(1,'rgba(255,232,172,0)');
+     ctx.fillStyle=rg; ctx.beginPath();
+     ctx.moveTo(-R*0.12,0); ctx.lineTo(R*0.12,0); ctx.lineTo(R*0.03,-R*3); ctx.lineTo(-R*0.03,-R*3); ctx.closePath(); ctx.fill();
+   }
+   ctx.restore();
+   const c=ctx.createRadialGradient(sx,sy,0,sx,sy,R*0.9);
+   c.addColorStop(0,'#fff8e4'); c.addColorStop(0.6,'#ffe7ae'); c.addColorStop(1,'rgba(255,214,140,0.12)');
+   ctx.fillStyle=c; ctx.beginPath(); ctx.arc(sx,sy,R*0.9,0,7); ctx.fill();
+ }
+ function drawCloud(c){
+   const x=W2SX(c.x), y=W2SY(c.y), sc=c.s*S;
+   ctx.save(); ctx.translate(x,y); ctx.scale(sc,sc); ctx.globalAlpha=c.a;
+   const puffs=[[0,0,30],[26,6,22],[-26,8,22],[12,-14,22],[-14,-12,20],[46,10,16],[-46,10,16]];
+   ctx.fillStyle='#dcae82'; for(const p of puffs){ ctx.beginPath(); ctx.arc(p[0],p[1]+5,p[2],0,7); ctx.fill(); }
+   ctx.fillStyle='#fdeecf'; for(const p of puffs){ ctx.beginPath(); ctx.arc(p[0],p[1],p[2],0,7); ctx.fill(); }
+   ctx.fillStyle='#fffaf1'; for(const p of [[12,-14,16],[-14,-12,14],[0,-6,16]]){ ctx.beginPath(); ctx.arc(p[0],p[1]-3,p[2],0,7); ctx.fill(); }
+   ctx.restore(); ctx.globalAlpha=1;
+ }
+ function drawClouds(){ for(const c of clouds) drawCloud(c); }
+ function drawRidge(baseY,amp,freq,colTop,colBot){
+   const wl=S2WX(0)-60, wr=S2WX(W)+60;
+   ctx.beginPath(); ctx.moveTo(W2SX(wl),H);
+   for(let x=wl;x<=wr;x+=8){
+     const y=baseY-amp*(0.5+0.5*Math.sin(x*0.006*freq))-amp*0.3*Math.sin(x*0.017*freq+1.3);
+     ctx.lineTo(W2SX(x),W2SY(y));
+   }
+   ctx.lineTo(W2SX(wr),H); ctx.closePath();
+   const g=ctx.createLinearGradient(0,W2SY(baseY-amp),0,W2SY(baseY+140));
+   g.addColorStop(0,colTop); g.addColorStop(1,colBot); ctx.fillStyle=g; ctx.fill();
+ }
+ function drawHills(){ drawRidge(540,66,0.9,'#c9a07d','#b78a67'); drawRidge(578,92,1.35,'#a9795c','#906850'); }
+ function drawCanyon(){
+   const x0=W2SX(LIP_X), x1=W2SX(RIGHT_X), w=x1-x0, top=W2SY(545), bot=W2SY(1350);
+   const g=ctx.createLinearGradient(0,top,0,bot);
+   g.addColorStop(0,'#c08a5e'); g.addColorStop(0.12,'#9c6844'); g.addColorStop(0.4,'#6a4530'); g.addColorStop(0.72,'#39241a'); g.addColorStop(1,'#140c08');
+   ctx.fillStyle=g; ctx.fillRect(x0-1,top,w+2,bot-top);
+   ctx.save(); ctx.beginPath(); ctx.rect(x0,top,w,bot-top); ctx.clip();
+   for(const st of strata){ const yy=W2SY(st.y);
+     ctx.fillStyle=st.tint?('rgba(210,160,110,'+st.a+')'):('rgba(30,18,12,'+(st.a+0.06)+')');
+     ctx.fillRect(x0-2,yy,w+4,st.h*S); }
+   ctx.restore();
+   let ao=ctx.createLinearGradient(x0,0,x0+w*0.24,0);
+   ao.addColorStop(0,'rgba(10,6,4,0.55)'); ao.addColorStop(1,'rgba(10,6,4,0)');
+   ctx.fillStyle=ao; ctx.fillRect(x0,top,w*0.24,bot-top);
+   ao=ctx.createLinearGradient(x1,0,x1-w*0.24,0);
+   ao.addColorStop(0,'rgba(10,6,4,0.5)'); ao.addColorStop(1,'rgba(10,6,4,0)');
+   ctx.fillStyle=ao; ctx.fillRect(x1-w*0.24,top,w*0.24,bot-top);
+ }
+ function landGrad(y0){ const g=ctx.createLinearGradient(0,W2SY(y0),0,W2SY(y0+260));
+   g.addColorStop(0,'#c9a069'); g.addColorStop(0.18,'#a87e49'); g.addColorStop(0.5,'#7a5b36'); g.addColorStop(1,'#4a3826'); return g; }
+ function drawGround(){
+   const wl=S2WX(0)-80, wr=S2WX(W)+80, deep=W2SY(1400);
+   ctx.beginPath();
+   ctx.moveTo(W2SX(wl),W2SY(G_LEFT)); ctx.lineTo(W2SX(RAMP_X0),W2SY(G_LEFT)); ctx.lineTo(W2SX(LIP_X),W2SY(LIP_Y));
+   ctx.lineTo(W2SX(LIP_X),deep); ctx.lineTo(W2SX(wl),deep); ctx.closePath();
+   ctx.fillStyle=landGrad(LIP_Y); ctx.fill();
+   ctx.save(); ctx.beginPath();
+   ctx.moveTo(W2SX(RAMP_X0),W2SY(G_LEFT)); ctx.lineTo(W2SX(LIP_X),W2SY(LIP_Y));
+   ctx.lineTo(W2SX(LIP_X),W2SY(LIP_Y+46)); ctx.lineTo(W2SX(RAMP_X0),W2SY(G_LEFT+46)); ctx.closePath();
+   ctx.fillStyle='rgba(255,220,150,0.16)'; ctx.fill(); ctx.restore();
+   ctx.beginPath(); ctx.moveTo(W2SX(wl),W2SY(G_LEFT)); ctx.lineTo(W2SX(RAMP_X0),W2SY(G_LEFT)); ctx.lineTo(W2SX(LIP_X),W2SY(LIP_Y));
+   ctx.lineWidth=4*S; ctx.strokeStyle='#e7c489'; ctx.stroke();
+   ctx.fillStyle='#f4d69c'; ctx.beginPath(); ctx.arc(W2SX(LIP_X),W2SY(LIP_Y),3.5*S,0,7); ctx.fill();
+
+   ctx.beginPath();
+   ctx.moveTo(W2SX(RIGHT_X),W2SY(MESA_Y)); ctx.lineTo(W2SX(wr),W2SY(MESA_Y));
+   ctx.lineTo(W2SX(wr),deep); ctx.lineTo(W2SX(RIGHT_X),deep); ctx.closePath();
+   ctx.fillStyle=landGrad(MESA_Y); ctx.fill();
+   ctx.beginPath(); ctx.moveTo(W2SX(RIGHT_X),W2SY(MESA_Y)); ctx.lineTo(W2SX(wr),W2SY(MESA_Y));
+   ctx.lineWidth=4*S; ctx.strokeStyle='#e7c489'; ctx.stroke();
+   ctx.fillStyle='#f4d69c'; ctx.beginPath(); ctx.arc(W2SX(RIGHT_X),W2SY(MESA_Y),3.5*S,0,7); ctx.fill();
+ }
+ function tuft(x,baseY){
+   const bx=W2SX(x), by=W2SY(baseY);
+   ctx.strokeStyle='#93894a'; ctx.lineWidth=1.6*S; ctx.lineCap='round';
+   for(let i=-2;i<=2;i++){ ctx.beginPath(); ctx.moveTo(bx+i*2*S,by);
+     ctx.quadraticCurveTo(bx+i*3*S,by-9*S,bx+i*4*S+(i>0?3:-3)*S,by-14*S); ctx.stroke(); }
+ }
+ function rockD(x,baseY,sz,shade){
+   const bx=W2SX(x), by=W2SY(baseY), u=sz*S;
+   ctx.save(); ctx.translate(bx,by);
+   ctx.beginPath(); ctx.moveTo(-u,0); ctx.lineTo(-u*0.7,-u*0.8); ctx.lineTo(-u*0.1,-u*1.05);
+   ctx.lineTo(u*0.6,-u*0.7); ctx.lineTo(u,0); ctx.closePath(); ctx.fillStyle=shade; ctx.fill();
+   ctx.strokeStyle='rgba(255,220,160,0.5)'; ctx.lineWidth=1.4*S;
+   ctx.beginPath(); ctx.moveTo(-u*0.7,-u*0.8); ctx.lineTo(-u*0.1,-u*1.05); ctx.lineTo(u*0.6,-u*0.7); ctx.stroke();
+   ctx.restore();
+ }
+ function cactus(x,baseY,h){
+   const bx=W2SX(x), by=W2SY(baseY), u=S;
+   ctx.strokeStyle='#5f7d4a'; ctx.lineWidth=9*u; ctx.lineCap='round';
+   ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(bx,by-h*u); ctx.stroke();
+   ctx.lineWidth=6*u;
+   ctx.beginPath(); ctx.moveTo(bx,by-h*0.55*u); ctx.lineTo(bx-11*u,by-h*0.55*u); ctx.lineTo(bx-11*u,by-h*0.82*u); ctx.stroke();
+   ctx.beginPath(); ctx.moveTo(bx,by-h*0.68*u); ctx.lineTo(bx+11*u,by-h*0.68*u); ctx.lineTo(bx+11*u,by-h*0.94*u); ctx.stroke();
+   ctx.strokeStyle='rgba(185,222,150,0.5)'; ctx.lineWidth=2*u;
+   ctx.beginPath(); ctx.moveTo(bx-3*u,by); ctx.lineTo(bx-3*u,by-h*u); ctx.stroke();
+ }
+ function drawDecor(){
+   ctx.fillStyle='rgba(58,40,26,0.5)';
+   for(const p of pebbles){ const y=(p.seg==='L'?G_LEFT:MESA_Y)+p.dy; ctx.beginPath(); ctx.arc(W2SX(p.x),W2SY(y),p.r*S,0,7); ctx.fill(); }
+   for(const t of tufts) tuft(t.x, t.seg==='L'?G_LEFT:MESA_Y);
+   rockD(70,G_LEFT,16,'#7c5f45'); rockD(190,G_LEFT,11,'#6e5540');
+   rockD(905,MESA_Y,15,'#7c5f45'); cactus(958,MESA_Y,40);
+ }
+ function drawParticles(front){
+   for(const p of parts){
+     if(p.t==='dust'&&front) continue; if(p.t==='deb'&&!front) continue;
+     const x=W2SX(p.x), y=W2SY(p.y);
+     if(p.t==='dust'){
+       const a=Math.max(0,p.life)*0.5, r=p.r*S;
+       const g=ctx.createRadialGradient(x,y,0,x,y,r);
+       g.addColorStop(0,'rgba(228,203,160,'+(a*0.9)+')'); g.addColorStop(0.6,'rgba(206,176,130,'+(a*0.55)+')'); g.addColorStop(1,'rgba(190,160,120,0)');
+       ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
+     } else {
+       ctx.save(); ctx.translate(x,y); ctx.rotate(p.rot); ctx.globalAlpha=clamp(p.life*1.4,0,1);
+       ctx.fillStyle='#5a3d28'; const s=p.r*S; ctx.fillRect(-s/2,-s/2,s,s*0.8); ctx.restore();
+     }
+   }
+   ctx.globalAlpha=1;
+ }
+ function drawCarShadow(car){
+   const ty=terrainY(car.x); if(ty===null)return;
+   const height=Math.max(0,(ty-WHEELR)-car.y);
+   const alpha=0.3*Math.max(0,1-height/260); if(alpha<=0.01)return;
+   const wsc=1+height/300, cx=W2SX(car.x), cyy=W2SY(ty);
+   ctx.save(); ctx.globalAlpha=alpha; ctx.fillStyle='#241812';
+   ctx.beginPath(); ctx.ellipse(cx,cyy,WB*0.72*S*wsc,10*S*wsc,0,0,7); ctx.fill(); ctx.restore();
+ }
+ function wheel(car,wx){
+   ctx.save(); ctx.translate(wx,0);
+   ctx.beginPath(); ctx.arc(0,0,WHEELR,0,7); ctx.fillStyle='#17171b'; ctx.fill();
+   ctx.lineWidth=4; ctx.strokeStyle='#050506'; ctx.stroke();
+   ctx.rotate(car.wheelSpin);
+   ctx.beginPath(); ctx.arc(0,0,WHEELR*0.56,0,7); ctx.fillStyle='#cbced4'; ctx.fill();
+   ctx.strokeStyle='#8b9099'; ctx.lineWidth=2.4;
+   for(let i=0;i<5;i++){ ctx.rotate(Math.PI*2/5); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-WHEELR*0.5); ctx.stroke(); }
+   ctx.beginPath(); ctx.arc(0,0,WHEELR*0.18,0,7); ctx.fillStyle='#6b7079'; ctx.fill();
+   ctx.restore();
+ }
+ function drawCar(car){
+   const col=car.col;
+   ctx.save(); ctx.translate(W2SX(car.x),W2SY(car.y)); ctx.rotate(car.angle); ctx.scale(S,S);
+   ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(0,4,58,10,0,0,7); ctx.fill();
+   wheel(car,-WB/2); wheel(car,WB/2);
+   const bb=-22+clamp(car.susp,-9,24);
+   // body
+   ctx.beginPath();
+   ctx.moveTo(-58,bb-4); ctx.lineTo(-60,bb-20);
+   ctx.quadraticCurveTo(-60,bb-30,-48,bb-30); ctx.lineTo(48,bb-30);
+   ctx.quadraticCurveTo(62,bb-30,62,bb-16); ctx.lineTo(60,bb-2);
+   ctx.quadraticCurveTo(60,bb+2,52,bb+2); ctx.lineTo(-50,bb+2);
+   ctx.quadraticCurveTo(-58,bb+2,-58,bb-4); ctx.closePath();
+   let g=ctx.createLinearGradient(0,bb-56,0,bb+2);
+   g.addColorStop(0,col.light); g.addColorStop(0.45,col.body); g.addColorStop(1,col.dark);
+   ctx.fillStyle=g; ctx.fill();
+   // cabin
+   ctx.beginPath();
+   ctx.moveTo(-30,bb-30); ctx.lineTo(-20,bb-52);
+   ctx.quadraticCurveTo(-16,bb-56,-6,bb-56); ctx.lineTo(14,bb-56);
+   ctx.quadraticCurveTo(22,bb-56,26,bb-46); ctx.lineTo(30,bb-30); ctx.closePath();
+   ctx.fillStyle=col.dark; ctx.fill();
+   // glass
+   let gg=ctx.createLinearGradient(0,bb-54,0,bb-32); gg.addColorStop(0,col.glass); gg.addColorStop(1,'#26405c');
+   ctx.fillStyle=gg;
+   ctx.beginPath(); ctx.moveTo(4,bb-34); ctx.lineTo(2,bb-50); ctx.lineTo(13,bb-50); ctx.lineTo(17,bb-34); ctx.closePath(); ctx.fill();
+   ctx.beginPath(); ctx.moveTo(-24,bb-34); ctx.lineTo(-18,bb-50); ctx.lineTo(-4,bb-50); ctx.lineTo(-4,bb-34); ctx.closePath(); ctx.fill();
+   ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=1.4;
+   ctx.beginPath(); ctx.moveTo(0,bb-49); ctx.lineTo(9,bb-49); ctx.stroke();
+   // stripe
+   ctx.fillStyle=col.trim; ctx.fillRect(-52,bb-19,110,5);
+   // lights
+   ctx.fillStyle='#fff2c0'; ctx.beginPath(); ctx.ellipse(57,bb-22,4,5,0,0,7); ctx.fill();
+   ctx.fillStyle=col.tail; ctx.fillRect(-60,bb-26,3.5,8);
+   // door line + rim
+   ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=1.4;
+   ctx.beginPath(); ctx.moveTo(-2,bb-30); ctx.lineTo(-2,bb-2); ctx.stroke();
+   ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.6;
+   ctx.beginPath(); ctx.moveTo(-46,bb-29); ctx.lineTo(46,bb-29); ctx.stroke();
+   ctx.restore();
+ }
+ function drawVignette(){
+   const v=ctx.createRadialGradient(W/2,H*0.45,H*0.2,W/2,H*0.5,H*0.78);
+   v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(22,11,5,0.36)');
+   ctx.fillStyle=v; ctx.fillRect(0,0,W,H);
+   ctx.fillStyle='rgba(255,170,90,0.05)'; ctx.fillRect(0,0,W,H);
+ }
+ function render(){
+   ctx.clearRect(0,0,W,H);
+   drawSky(); drawSun(); drawClouds(); drawHills(); drawCanyon(); drawGround(); drawDecor();
+   drawCarShadow(blue); drawCarShadow(red);
+   drawParticles(false);
+   const order=[red,blue].sort((a,b)=>a.x-b.x); order.forEach(drawCar);
+   drawParticles(true);
+   drawVignette();
+ }
+
+ /* ---- loop ---- */
+ spawnRun();
+ let last=performance.now(), acc=0;
+ function frame(now){
+   let el=now-last; last=now; if(el>100)el=100;
+   acc+=el/(1000/60); let steps=0;
+   while(acc>=1&&steps<5){ physicsStep(); acc-=1; steps++; }
+   render();
+   requestAnimationFrame(frame);
+ }
+ requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
