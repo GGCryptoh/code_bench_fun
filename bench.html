@@ -151,9 +151,37 @@
     return Math.max(0, Math.min(10, Math.round(n)));
   }
 
-  function hasKey() {
+  var envKey = null; // auto-loaded from .env.local when running on localhost
+
+  function getKey() {
     var k = localStorage.getItem(LS_KEY);
-    return !!(k && k.trim());
+    return (k && k.trim()) || envKey;
+  }
+
+  function hasKey() {
+    return !!getKey();
+  }
+
+  // On localhost, the repo's gitignored .env.local is served by the dev server —
+  // pick the key up automatically so there's nothing to paste. Never runs in production.
+  function tryEnvLocalKey() {
+    if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return;
+    fetch(".env.local", { cache: "no-store" }).then(function (r) {
+      return r.ok ? r.text() : "";
+    }).then(function (txt) {
+      var m = txt && txt.match(/^\s*(?:export\s+)?OPENROUTER_API_KEY\s*=\s*["']?([^\s"'#]+)/m);
+      if (!m || !m[1]) return;
+      envKey = m[1];
+      updateKeyPill();
+      var saved = localStorage.getItem(LS_KEY);
+      if (!saved || !saved.trim()) {
+        var input = document.getElementById("keyInput");
+        if (input && !input.value) input.placeholder = "using key from .env.local";
+        var status = document.querySelector(".key-status");
+        if (status) status.textContent = "Using the OpenRouter key from this repo's .env.local (localhost only). Paste a key above to override — it stays in this browser and goes only to openrouter.ai.";
+      }
+      syncComposer();
+    }).catch(function () { /* no .env.local — manual entry */ });
   }
 
   function extractHtml(raw) {
@@ -232,6 +260,7 @@
     wireKey();
     wireComposer();
     syncComposer();
+    tryEnvLocalKey();
   }
 
   function renderModelPicker() {
@@ -291,7 +320,11 @@
 
   function updateKeyPill() {
     var pill = document.getElementById("keyPill");
-    if (pill) pill.hidden = !hasKey();
+    if (!pill) return;
+    var saved = localStorage.getItem(LS_KEY);
+    if (saved && saved.trim()) { pill.textContent = "saved"; pill.hidden = false; }
+    else if (envKey) { pill.textContent = ".env.local"; pill.hidden = false; }
+    else { pill.hidden = true; }
   }
 
   function wireComposer() {
@@ -337,7 +370,7 @@
     if (selected.size === 0) return;
 
     var kind = document.getElementById("kindSelect").value === "interactive" ? "interactive" : "simulation";
-    var key = localStorage.getItem(LS_KEY);
+    var key = getKey();
     var created = new Date();
     var title = firstWords(prompt, 6);
     var id = slugify(title);

@@ -163,7 +163,7 @@
   /* shared topbar */
   function topbar(active) {
     const links = [
-      ["index.html", "Gallery"], ["bench.html", "One-Shot Bench"], ["privacy.html", "Privacy"],
+      ["index.html", "Gallery"], ["bench.html", "One-Shot Bench"], ["usage.html", "Usage"], ["privacy.html", "Privacy"],
     ];
     return `<header class="topbar"><a class="brand" href="index.html">${siteLogo(22)}<span>Code Bench Fun</span><span class="sub">— one prompt, every model</span></a><nav>${links
       .map(([h, t]) => `<a href="${h}"${h === active ? ' class="on"' : ""}>${t}</a>`)

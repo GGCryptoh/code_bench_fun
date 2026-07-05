@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Usage — Code Bench Fun</title>
+<link rel="stylesheet" href="assets/site.css?v=3">
+<style>
+  main.usage { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .usage h2 { font-size: 16px; margin: 10px 0 0; }
+  .usage p { margin: 0; color: var(--t-mute); font-size: 14px; }
+  pre.cmd {
+    background: rgba(23,23,23,.8); border: 1px solid var(--border); border-radius: var(--r-sm);
+    padding: 14px 16px; margin: 0; overflow-x: auto;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.6; color: var(--t-body);
+    white-space: pre;
+  }
+  pre.cmd .c { color: var(--t-ghost); }
+  table.flags { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.flags td { padding: 8px 10px; border-bottom: 1px solid rgba(38,38,38,.5); vertical-align: top; }
+  table.flags td:first-child { font-family: var(--mono); color: var(--t-hero); white-space: nowrap; }
+  table.flags td:last-child { color: var(--t-mute); }
+  table.flags tr:last-child td { border-bottom: 0; }
+  .modelgrid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .modelgrid .mrow {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--r-sm);
+  }
+  .modelgrid .mkey { font-family: var(--mono); font-size: 12px; color: var(--t-hero); }
+  .modelgrid .mvia { font-size: 11px; color: var(--t-ghost); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="topbar-slot"></div>
+
+  <main class="usage">
+    <h1 class="page-title">Usage</h1>
+    <p>Two ways to run a bench: the local CLI runner (Claude models ride your Claude Code subscription) or the <a href="bench.html" style="color:var(--t-body);border-bottom:1px solid var(--border)">One-Shot Bench</a> page in the browser (everything via OpenRouter, bring your own key).</p>
+
+    <div class="card">
+      <h2 class="label">Run a bench from the terminal</h2>
+      <p style="margin:10px 0 12px">One command builds the same game with every model in parallel, counts time / tokens / cost / turns, has Opus&nbsp;4.8 judge each build, and writes everything into the gallery:</p>
+      <pre class="cmd">node runner/bench.mjs \
+  --id cars-vs-canyon \
+  --title "Cars vs Canyon" \
+  --kind simulation \
+  --models fable-5,glm-5.2,gpt-5.5,opus-4.8,grok-4.20,gemini-3.5-flash \
+  --prompt "A 2D side-view physics simulation: a red car and a blue car race in \
+from the left, hit launch ramps and jump across a deep canyon side by side. \
+Suspension compression and bounce on landing, kicked-up dust and debris \
+particles, parallax sky with drifting clouds and a warm sun. After each jump \
+the cars reset and run again with slightly different speeds, forever. Fixed \
+camera, no user input, pure autoplaying simulation."
+
+<span class="c"># then preview locally…</span>
+python3 -m http.server 8619        <span class="c"># → http://127.0.0.1:8619/run.html?id=cars-vs-canyon</span>
+
+<span class="c"># …and publish</span>
+git add -A && git commit -m "cars vs canyon run" && git push</pre>
+    </div>
+
+    <div class="card">
+      <h2 class="label">Flags</h2>
+      <table class="flags">
+        <tr><td>--id</td><td>kebab-case run id — becomes the URL (<span class="mono">run.html?id=…</span>) and folder name</td></tr>
+        <tr><td>--title</td><td>display title in the gallery</td></tr>
+        <tr><td>--kind</td><td><span class="mono">simulation</span> (autoplays, loops, no input — best for reels) or <span class="mono">interactive</span> (playable)</td></tr>
+        <tr><td>--models</td><td>comma-separated model keys (see below); panel order = this order, reel mode shows the first 4 successful</td></tr>
+        <tr><td>--prompt / --prompt-file</td><td>the one-shot game prompt, inline or from a file</td></tr>
+        <tr><td>--judge-provider</td><td><span class="mono">claude-cli</span> (default, subscription) or <span class="mono">openrouter</span></td></tr>
+        <tr><td>--force-openrouter</td><td>run Claude models through OpenRouter too (real API cost, cleaner apples-to-apples input tokens)</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2 class="label">Model keys</h2>
+      <div class="modelgrid" id="modelList" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <h2 class="label">OpenRouter key</h2>
+      <p style="margin-top:10px">Non-Claude models need an OpenRouter key, resolved in this order:</p>
+      <table class="flags" style="margin-top:8px">
+        <tr><td>1. env var</td><td><span class="mono">OPENROUTER_API_KEY=sk-or-… node runner/bench.mjs …</span></td></tr>
+        <tr><td>2. .env.local</td><td>file at the repo root with <span class="mono">OPENROUTER_API_KEY=sk-or-…</span> (gitignored; the bench page also picks it up on localhost)</td></tr>
+        <tr><td>3. macOS keychain</td><td>service <span class="mono">OPENROUTER_API_KEY</span></td></tr>
+      </table>
+      <p style="margin-top:10px">Claude models (Fable 5, Opus 4.8, Sonnet 5, Haiku 4.5) run through the local <span class="mono">claude</span> CLI on your Claude subscription — no API key needed.</p>
+    </div>
+
+    <div class="card">
+      <h2 class="label">Import a browser run</h2>
+      <p style="margin:10px 0 12px">Built something on the One-Shot Bench page? Download the run bundle, then:</p>
+      <pre class="cmd">node runner/import.mjs cbf-run-my-game-20260705.json
+git add -A && git commit -m "import run" && git push</pre>
+    </div>
+
+    <div class="card">
+      <h2 class="label">Recording for social</h2>
+      <p style="margin-top:10px">Open a run → <b style="font-weight:600">Reel mode</b> (or add <span class="mono">?reel=1</span>). The grid fits the viewport, counters race at true relative speed and loop every ~24s. Tune with <span class="mono">?replay=12</span> (race seconds) and <span class="mono">?loop=1</span> (loop outside reel mode too). ESC exits. Costs are real — big models can be $1+ per game.</p>
+    </div>
+  </main>
+
+  <footer class="site">
+    <a href="index.html">Gallery</a>
+    <a href="https://github.com/GGCryptoh/code_bench_fun" target="_blank" rel="noopener">GitHub</a>
+    <a href="privacy.html">Privacy</a>
+  </footer>
+</div>
+
+<script src="assets/site.js?v=3"></script>
+<script>
+  document.getElementById("topbar-slot").innerHTML = CBF.topbar("usage.html");
+  document.getElementById("modelList").innerHTML = Object.keys(CBF.MODELS).map(function (k) {
+    var m = CBF.MODELS[k];
+    return '<div class="mrow">' + CBF.logoChip(k, 16) +
+      '<span class="mkey">' + k + '</span>' +
+      '<span class="mvia">' + (m.cli_id ? "claude cli" : "openrouter") + ' · $' + m.in_per_m + '/$' + m.out_per_m + ' per 1M</span></div>';
+  }).join("");
+</script>
+</body>
+</html>
