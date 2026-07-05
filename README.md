@@ -21,7 +21,7 @@ node runner/bench.mjs \
   --prompt "Make a space shooter where the player dodges asteroids"
 ```
 
-**Note:** Claude models (fable-5, sonnet-5, haiku-4.5, opus-4.8) use the local `claude` CLI (requires Claude subscription). All others use the `OPENROUTER_API_KEY` environment variable or macOS keychain service.
+**Note:** Claude models (fable-5, sonnet-5, haiku-4.5, opus-4.8) use the local `claude` CLI (requires Claude subscription). All others need an OpenRouter key, resolved in this order: `OPENROUTER_API_KEY` env var → `.env.local` (or `.env`) at the repo root containing `OPENROUTER_API_KEY=sk-or-...` → macOS keychain service `OPENROUTER_API_KEY`. `.env.local` is gitignored — never commit keys.
 
 ## Importing a Browser Bundle
 

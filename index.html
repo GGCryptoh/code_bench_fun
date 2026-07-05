@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Code Bench Fun — one prompt, every model</title>
-<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/site.css?v=3">
 <style>
   /* page-specific: home hero + leaderboard + empty state (everything else reuses site.css) */
   .home-hero { padding: 6px 0 26px; }
@@ -16,7 +16,7 @@
 
   .leaderboard-row { display: flex; flex-wrap: wrap; gap: 12px; }
   .lb-card { position: relative; flex: 0 0 auto; width: 132px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 12px 16px; }
-  .lb-card .lb-pill { position: absolute; top: 10px; right: 10px; }
+  .lb-card .lb-pill { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: #333; }
   .lb-card .chip { justify-content: center; }
   .lb-score { font-size: 26px; font-weight: 300; color: var(--t-hero); font-variant-numeric: tabular-nums; }
   .lb-line { font-size: 11px; }
@@ -65,7 +65,7 @@
   </footer>
 </div>
 
-<script src="assets/site.js"></script>
+<script src="assets/site.js?v=3"></script>
 <script>
 (function () {
   "use strict";

@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One-Shot Bench — Code Bench Fun</title>
+<link rel="stylesheet" href="assets/site.css?v=3">
+<style>
+  /* ---------- bench.html page-specific styles ---------- */
+
+  .page-head { margin-bottom: 22px; }
+  .page-head .page-sub { margin-top: 6px; font-size: 13px; }
+
+  .card + .card { margin-top: 14px; }
+
+  /* key card */
+  .key-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 8px; }
+  #keyInput { flex: 1 1 260px; min-width: 200px; }
+  input[type=password] {
+    width: 100%; background: rgba(23,23,23,.8); border: 1px solid var(--border);
+    border-radius: var(--r-sm); color: var(--t-hero); padding: 12px 14px; font: inherit;
+    outline: none; transition: border-color .2s var(--ease);
+  }
+  input[type=password]:focus { border-color: #525252; }
+  #keyPill[hidden] { display: none; }
+  .key-status { font-size: 12px; margin-top: 2px; }
+  .key-get { display: inline-block; margin-top: 8px; font-size: 12px; }
+  .key-get:hover { color: var(--t-hero); }
+
+  /* composer */
+  #promptInput { resize: vertical; }
+  .composer-row { display: flex; gap: 16px; margin: 14px 0; flex-wrap: wrap; }
+  .kind-wrap { max-width: 320px; flex: 1 1 240px; }
+  .kind-wrap select { margin-top: 6px; }
+
+  .modelpicker {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px; margin: 8px 0 18px;
+  }
+  .modelpicker.disabled .modelcard { pointer-events: none; opacity: .45; }
+  .modelcard {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--r-sm);
+    padding: 10px 12px; text-align: left; width: 100%; transition: all .2s var(--ease);
+  }
+  .modelcard:hover { border-color: var(--border-hi); }
+  .modelcard.on { border-color: #525252; background: var(--raise); }
+  .modelcard .price { font-size: 11px; color: var(--t-dim); white-space: nowrap; }
+
+  .build-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 4px; }
+  .build-btn { padding: 12px 26px; font-size: 15px; }
+  .est-note { font-size: 12px; }
+  .key-hint { font-size: 12px; margin-top: 10px; }
+
+  textarea:disabled, select:disabled, input:disabled { opacity: .45; }
+
+  @keyframes shakeX {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-4px); }
+    40%, 60% { transform: translateX(4px); }
+  }
+  .shake { animation: shakeX .4s var(--ease); }
+
+  /* run grid extras */
+  #runGrid { margin-top: 22px; }
+  .panel-sub .judge { color: var(--t-hero); opacity: 0; transition: opacity .4s var(--ease); }
+  .panel-sub .judge.show { opacity: 1; }
+  .frame .building {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    opacity: .3; animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: .12; } 50% { opacity: .5; } }
+
+  /* summary */
+  .summary-actions { margin-top: 16px; }
+  .actions-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .hint-line { font-size: 12px; margin-top: 10px; }
+
+  @media (max-width: 720px) {
+    .composer-row { flex-direction: column; gap: 10px; }
+    .kind-wrap { max-width: none; }
+    .modelpicker { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .key-row { flex-direction: column; align-items: stretch; }
+    .build-row { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="wrap">
+  <div id="content"></div>
+</div>
+
+<script src="assets/site.js?v=3"></script>
+<script>
+(function () {
+  "use strict";
+
+  document.getElementById("content").insertAdjacentHTML("beforebegin", CBF.topbar("bench.html"));
+
+  var content = document.getElementById("content");
+
+  var LS_KEY = "cbf_or_key";
+
+  var SYS_PROMPT = "You are competing in a one-shot game-building benchmark. Reply with ONE complete self-contained HTML file and nothing else — no markdown fences, no commentary before or after. Hard rules: no external requests of any kind (no CDNs, fonts, images, analytics); everything inline. The file runs inside a sandboxed iframe (sandbox=\"allow-scripts\"): never use localStorage, sessionStorage, cookies, alert, prompt or confirm. Fill the whole viewport (html,body{margin:0;height:100%;overflow:hidden}) and look good in a SQUARE frame. If the request is a simulation: start automatically, run and loop forever, zero user input. If interactive: show minimal on-screen instructions and support both touch and keyboard. Push visual polish: cohesive palette, smooth motion, particles, depth — it will be judged on looks in a screen recording.";
+
+  var JUDGE_SYS = "You are the judge of a one-shot AI game-building benchmark. Score strictly. Reply ONLY with minified JSON, no fences.";
+
+  var JUDGE_MODEL_ID = (CBF.MODELS["opus-4.8"] && CBF.MODELS["opus-4.8"].or_id) || "anthropic/claude-opus-4.8";
+
+  var API_URL = "https://openrouter.ai/api/v1/chat/completions";
+  var REFERER = "https://ggcryptoh.github.io/code_bench_fun";
+
+  var DEFAULT_ON = ["fable-5", "glm-5.2", "gpt-5.5", "opus-4.8"];
+  var selected = new Set(DEFAULT_ON);
+  var built = false;
+  var runMeta = null;
+
+  /* ---------- helpers ---------- */
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function money(n) {
+    if (n == null || isNaN(n)) return "—";
+    if (Number.isInteger(n)) return "$" + n;
+    return "$" + (Math.round(n * 100) / 100);
+  }
+
+  function slugify(s) {
+    var out = String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+    return out || "game";
+  }
+
+  function firstWords(s, n) {
+    var words = String(s || "").trim().split(/\s+/).filter(Boolean);
+    var head = words.slice(0, n).join(" ");
+    return head || "Untitled game";
+  }
+
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function yyyymmdd(d) { return "" + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()); }
+
+  function clampScore(n) {
+    n = Number(n);
+    if (!isFinite(n)) return 0;
+    return Math.max(0, Math.min(10, Math.round(n)));
+  }
+
+  function hasKey() {
+    var k = localStorage.getItem(LS_KEY);
+    return !!(k && k.trim());
+  }
+
+  function extractHtml(raw) {
+    if (!raw) return null;
+    var s = raw.replace(/```html/gi, "").replace(/```/g, "");
+    var lower = s.toLowerCase();
+    var start = lower.indexOf("<!doctype");
+    if (start === -1) start = lower.indexOf("<html");
+    var end = lower.lastIndexOf("</html>");
+    if (start === -1 || end === -1 || end < start) return null;
+    return s.slice(start, end + 7).trim();
+  }
+
+  function authHeaders(key) {
+    return {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + key,
+      "HTTP-Referer": REFERER,
+      "X-Title": "Code Bench Fun",
+    };
+  }
+
+  /* ---------- shell render ---------- */
+
+  function renderShell() {
+    content.innerHTML =
+      '<div class="page-head">' +
+        '<h1 class="page-title">One-Shot Bench</h1>' +
+        '<div class="dim page-sub">Describe a game once. No retries. Every model gets the same shot.</div>' +
+      "</div>" +
+
+      '<div class="card" id="keyCard">' +
+        '<span class="label">OpenRouter Key</span>' +
+        '<div class="key-row">' +
+          '<input type="password" id="keyInput" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">' +
+          '<button class="btn" id="btnKeySave">Save</button>' +
+          '<button class="btn ghost" id="btnKeyClear">Clear</button>' +
+          '<span class="pill" id="keyPill" hidden>saved</span>' +
+        "</div>" +
+        '<div class="dim key-status">Key saved in this browser only — requests go straight from your browser to openrouter.ai. Nothing else sees it.</div>' +
+        '<a class="dim key-get" href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key &rarr; https://openrouter.ai/keys</a>' +
+      "</div>" +
+
+      '<div class="card" id="composerCard">' +
+        '<span class="label">Describe the game</span>' +
+        '<textarea id="promptInput" rows="4" placeholder="A tiny physics sim: two cars race up ramps and jump a canyon side-by-side, camera fixed, loops forever…" style="margin-top:6px"></textarea>' +
+        '<div class="composer-row">' +
+          '<div class="kind-wrap">' +
+            '<span class="label">Kind</span>' +
+            '<select id="kindSelect">' +
+              '<option value="simulation" selected>Simulation (autoplays, loops)</option>' +
+              '<option value="interactive">Interactive (playable)</option>' +
+            "</select>" +
+          "</div>" +
+        "</div>" +
+        '<span class="label">Models</span>' +
+        '<div class="modelpicker" id="modelPicker"></div>' +
+        '<div class="build-row">' +
+          '<button class="btn build-btn" id="btnBuild">Build</button>' +
+          '<span class="dim est-note" id="estNote"></span>' +
+        "</div>" +
+        '<div class="dim key-hint" id="keyHint" hidden>Add and save an OpenRouter key above to unlock the builder.</div>' +
+      "</div>" +
+
+      '<section class="rungrid" id="runGrid"></section>' +
+      '<div id="summaryWrap"></div>' +
+
+      '<footer class="site">' +
+        '<a href="privacy.html">Privacy</a>' +
+        '<a href="https://github.com/GGCryptoh/code_bench_fun" target="_blank" rel="noopener">GitHub</a>' +
+        '<span>AI-built games, judged by AI</span>' +
+      "</footer>";
+
+    renderModelPicker();
+    updateEstimate();
+    wireKey();
+    wireComposer();
+    syncComposer();
+  }
+
+  function renderModelPicker() {
+    var wrap = document.getElementById("modelPicker");
+    wrap.innerHTML = Object.keys(CBF.MODELS).map(function (key) {
+      var m = CBF.MODELS[key];
+      var on = selected.has(key) ? " on" : "";
+      return (
+        '<button type="button" class="modelcard' + on + '" data-key="' + key + '" aria-pressed="' + selected.has(key) + '">' +
+          CBF.logoChip(key, 18) +
+          '<span class="mono price">' + money(m.in_per_m) + " / " + money(m.out_per_m) + " per 1M</span>" +
+        "</button>"
+      );
+    }).join("");
+    wrap.addEventListener("click", function (e) {
+      if (built) return;
+      var btn = e.target.closest(".modelcard");
+      if (!btn) return;
+      var key = btn.dataset.key;
+      if (selected.has(key)) selected.delete(key); else selected.add(key);
+      btn.classList.toggle("on");
+      btn.setAttribute("aria-pressed", selected.has(key));
+      syncComposer();
+      updateEstimate();
+    });
+  }
+
+  function updateEstimate() {
+    var el = document.getElementById("estNote");
+    if (!el) return;
+    var sum = 0;
+    selected.forEach(function (key) {
+      var m = CBF.MODELS[key];
+      if (!m) return;
+      sum += (m.out_per_m * 8000) / 1e6 + (m.in_per_m * 600) / 1e6;
+    });
+    el.textContent = "≈ $" + sum.toFixed(2) + " est.";
+  }
+
+  function wireKey() {
+    var input = document.getElementById("keyInput");
+    input.value = localStorage.getItem(LS_KEY) || "";
+    document.getElementById("btnKeySave").addEventListener("click", function () {
+      var v = input.value.trim();
+      if (v) localStorage.setItem(LS_KEY, v);
+      updateKeyPill();
+      syncComposer();
+    });
+    document.getElementById("btnKeyClear").addEventListener("click", function () {
+      localStorage.removeItem(LS_KEY);
+      input.value = "";
+      updateKeyPill();
+      syncComposer();
+    });
+    updateKeyPill();
+  }
+
+  function updateKeyPill() {
+    var pill = document.getElementById("keyPill");
+    if (pill) pill.hidden = !hasKey();
+  }
+
+  function wireComposer() {
+    document.getElementById("btnBuild").addEventListener("click", onBuildClick);
+  }
+
+  function syncComposer() {
+    var locked = built || !hasKey();
+    var promptInput = document.getElementById("promptInput");
+    var kindSelect = document.getElementById("kindSelect");
+    var modelPicker = document.getElementById("modelPicker");
+    var buildBtn = document.getElementById("btnBuild");
+    var keyHint = document.getElementById("keyHint");
+
+    if (promptInput) promptInput.disabled = locked;
+    if (kindSelect) kindSelect.disabled = locked;
+    if (modelPicker) modelPicker.classList.toggle("disabled", locked);
+    if (keyHint) keyHint.hidden = built || hasKey();
+    if (buildBtn) {
+      buildBtn.disabled = locked || selected.size === 0;
+      if (!built) {
+        var n = selected.size;
+        buildBtn.textContent = "Build with " + n + " model" + (n === 1 ? "" : "s");
+      }
+    }
+  }
+
+  /* ---------- one-shot build flow ---------- */
+
+  function onBuildClick() {
+    if (built) return;
+    if (!hasKey()) { syncComposer(); return; }
+
+    var promptInput = document.getElementById("promptInput");
+    var prompt = promptInput.value.trim();
+    if (!prompt) {
+      promptInput.classList.remove("shake");
+      void promptInput.offsetWidth;
+      promptInput.classList.add("shake");
+      promptInput.focus();
+      return;
+    }
+    if (selected.size === 0) return;
+
+    var kind = document.getElementById("kindSelect").value === "interactive" ? "interactive" : "simulation";
+    var key = localStorage.getItem(LS_KEY);
+    var created = new Date();
+    var title = firstWords(prompt, 6);
+    var id = slugify(title);
+    runMeta = { prompt: prompt, kind: kind, created: created, title: title, id: id };
+
+    built = true;
+    syncComposer();
+    document.getElementById("btnBuild").textContent = "Building…";
+
+    var modelKeys = Object.keys(CBF.MODELS).filter(function (k) { return selected.has(k); });
+    renderRunGrid(modelKeys);
+
+    Promise.all(modelKeys.map(function (mk, i) {
+      return runModel(mk, i, prompt, kind, key, id);
+    })).then(renderSummary);
+  }
+
+  function renderRunGrid(modelKeys) {
+    var grid = document.getElementById("runGrid");
+    grid.innerHTML = modelKeys.map(function (mk, i) {
+      return (
+        '<div class="panel reveal" style="animation-delay:' + (i * 60) + 'ms" data-model="' + mk + '">' +
+          '<div class="panel-head">' +
+            CBF.logoChip(mk, 20) +
+            '<span class="cost mono" data-role="cost">$0.00</span>' +
+            '<span class="bar" data-role="bar"></span>' +
+          "</div>" +
+          '<div class="panel-sub">' +
+            '<span data-role="tok">0 tok</span>' +
+            '<span data-role="elapsed">0.0s</span>' +
+            '<span data-role="status">queued</span>' +
+            '<span class="judge" data-role="judge"></span>' +
+          "</div>" +
+          '<div class="frame" data-role="frame">' +
+            '<div class="building" data-role="placeholder">' + CBF.logoChip(mk, 40) + "</div>" +
+          "</div>" +
+        "</div>"
+      );
+    }).join("");
+  }
+
+  async function runModel(modelKey, idx, prompt, kind, apiKey, id) {
+    var m = CBF.MODELS[modelKey];
+    var panel = content.querySelector('.panel[data-model="' + modelKey + '"]');
+    var els = {
+      cost: panel.querySelector('[data-role="cost"]'),
+      bar: panel.querySelector('[data-role="bar"]'),
+      status: panel.querySelector('[data-role="status"]'),
+      tok: panel.querySelector('[data-role="tok"]'),
+      elapsed: panel.querySelector('[data-role="elapsed"]'),
+      judge: panel.querySelector('[data-role="judge"]'),
+      frame: panel.querySelector('[data-role="frame"]'),
+    };
+
+    var promptEstimate = (SYS_PROMPT + prompt).length / 4;
+    var startTs = performance.now();
+    var elapsedTimer = setInterval(function () {
+      els.elapsed.textContent = ((performance.now() - startTs) / 1000).toFixed(1) + "s";
+    }, 150);
+
+    els.status.textContent = "streaming";
+
+    var timeline = [];
+    var lastSampleAt = 0;
+
+    function onDelta(acc) {
+      var tokEst = acc.length / 4;
+      var elapsedMs = performance.now() - startTs;
+      if (elapsedMs - lastSampleAt >= 400) {
+        timeline.push([Math.round(elapsedMs), Math.round(tokEst)]);
+        lastSampleAt = elapsedMs;
+      }
+      var estCost = (m.in_per_m * promptEstimate) / 1e6 + (m.out_per_m * tokEst) / 1e6;
+      els.cost.textContent = CBF.fmtUSD(estCost);
+      els.tok.textContent = CBF.fmtTok(tokEst) + " tok";
+      var pct = Math.min(96, (tokEst / 8000) * 100);
+      els.bar.style.width = pct.toFixed(1) + "%";
+    }
+
+    var build = {
+      model_key: modelKey,
+      provider: "openrouter",
+      provider_model_id: m.or_id,
+      file: null,
+      ok: false,
+      error: null,
+      ms: 0,
+      turns: 1,
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: 0,
+      tps: 0,
+      timeline: null,
+      judge: null,
+    };
+
+    try {
+      var res = await fetch(API_URL, {
+        method: "POST",
+        headers: authHeaders(apiKey),
+        body: JSON.stringify({
+          model: m.or_id,
+          stream: true,
+          stream_options: { include_usage: true },
+          usage: { include: true },
+          max_tokens: 32000,
+          messages: [
+            { role: "system", content: SYS_PROMPT },
+            { role: "user", content: prompt },
+          ],
+        }),
+      });
+
+      if (!res.ok) {
+        var errText = "";
+        try { errText = (await res.text()).slice(0, 300); } catch (e2) { /* ignore */ }
+        throw new Error("HTTP " + res.status + (errText ? ": " + errText : ""));
+      }
+
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      var buf = "";
+      var acc = "";
+      var usage = null;
+
+      while (true) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        buf += decoder.decode(chunk.value, { stream: true });
+        var lines = buf.split("\n");
+        buf = lines.pop();
+        for (var li = 0; li < lines.length; li++) {
+          var line = lines[li].trim();
+          if (line.indexOf("data:") !== 0) continue;
+          var data = line.slice(5).trim();
+          if (data === "[DONE]") continue;
+          var obj;
+          try { obj = JSON.parse(data); } catch (e3) { continue; }
+          if (obj.usage) usage = obj.usage;
+          var choice = obj.choices && obj.choices[0];
+          if (choice && choice.delta && typeof choice.delta.content === "string" && choice.delta.content) {
+            acc += choice.delta.content;
+            onDelta(acc);
+          }
+        }
+      }
+
+      clearInterval(elapsedTimer);
+      var ms = Math.round(performance.now() - startTs);
+      els.elapsed.textContent = (ms / 1000).toFixed(1) + "s";
+      els.status.textContent = "done";
+      els.bar.style.width = "100%";
+
+      var html = extractHtml(acc);
+      if (!html) throw new Error("No HTML found in model output");
+
+      var inputTok = usage && usage.prompt_tokens != null ? usage.prompt_tokens : Math.round(promptEstimate);
+      var outputTok = usage && usage.completion_tokens != null ? usage.completion_tokens : Math.round(acc.length / 4);
+      var cost = usage && usage.cost != null ? usage.cost : ((inputTok * m.in_per_m) + (outputTok * m.out_per_m)) / 1e6;
+
+      timeline.push([ms, outputTok]);
+
+      build.ok = true;
+      build.ms = ms;
+      build.input_tokens = inputTok;
+      build.output_tokens = outputTok;
+      build.cost_usd = Math.round(cost * 1e6) / 1e6;
+      build.tps = ms > 0 ? Math.round((outputTok / (ms / 1000)) * 10) / 10 : 0;
+      build.timeline = timeline;
+      build.html = html;
+      build.file = "games/" + id + "/" + modelKey + ".html";
+
+      els.cost.textContent = CBF.fmtUSD(build.cost_usd);
+      els.tok.textContent = CBF.fmtTok(outputTok) + " tok";
+
+      els.frame.innerHTML = "";
+      var iframe = document.createElement("iframe");
+      iframe.setAttribute("sandbox", "allow-scripts");
+      els.frame.appendChild(iframe);
+      iframe.srcdoc = html;
+
+      /* ---- judge: fires as soon as THIS build is ready, doesn't wait on the others ---- */
+      els.status.textContent = "judging";
+      try {
+        var judge = await judgeBuild(prompt, kind, html, apiKey);
+        build.judge = judge;
+        els.status.textContent = "judged";
+        els.judge.textContent = "★ " + judge.score.toFixed(1);
+        els.judge.title = judge.verdict || "";
+        els.judge.classList.add("show");
+      } catch (eJudge) {
+        els.status.textContent = "judge failed";
+      }
+    } catch (err) {
+      clearInterval(elapsedTimer);
+      var ms2 = Math.round(performance.now() - startTs);
+      els.elapsed.textContent = (ms2 / 1000).toFixed(1) + "s";
+      els.status.textContent = "failed";
+      els.bar.style.width = "0%";
+      build.ok = false;
+      build.error = (err && err.message) || String(err);
+      build.ms = ms2;
+      build.file = null;
+      var name = (CBF.MODELS[modelKey] && CBF.MODELS[modelKey].name) || modelKey;
+      els.frame.innerHTML = '<div class="fail">' + escapeHtml(name) + " failed: " + escapeHtml(build.error) + "</div>";
+    }
+
+    return build;
+  }
+
+  async function judgeBuild(prompt, kind, html, apiKey) {
+    var userMsg =
+      "GAME PROMPT:\n" + prompt +
+      "\n\nKIND: " + kind +
+      "\n\nHTML SOURCE:\n" + html +
+      "\n\nScore integers 0-10: works (will it actually run and animate as intended — inspect the code for bugs), fidelity (does what was asked), polish (visual quality/motion/detail), creativity (flair beyond the ask). JSON shape: {\"works\":n,\"fidelity\":n,\"polish\":n,\"creativity\":n,\"verdict\":\"<=90 chars\"}";
+
+    var res = await fetch(API_URL, {
+      method: "POST",
+      headers: authHeaders(apiKey),
+      body: JSON.stringify({
+        model: JUDGE_MODEL_ID,
+        stream: false,
+        messages: [
+          { role: "system", content: JUDGE_SYS },
+          { role: "user", content: userMsg },
+        ],
+      }),
+    });
+
+    if (!res.ok) throw new Error("judge HTTP " + res.status);
+    var data = await res.json();
+    var text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    if (!text) throw new Error("empty judge response");
+
+    var first = text.indexOf("{");
+    var last = text.lastIndexOf("}");
+    if (first === -1 || last === -1 || last < first) throw new Error("no JSON in judge response");
+    var parsed = JSON.parse(text.slice(first, last + 1));
+
+    var works = clampScore(parsed.works);
+    var fidelity = clampScore(parsed.fidelity);
+    var polish = clampScore(parsed.polish);
+    var creativity = clampScore(parsed.creativity);
+    var score = Math.round((works * 0.35 + fidelity * 0.3 + polish * 0.25 + creativity * 0.1) * 10) / 10;
+
+    return {
+      works: works, fidelity: fidelity, polish: polish, creativity: creativity,
+      score: score, verdict: String(parsed.verdict || "").slice(0, 200),
+    };
+  }
+
+  /* ---------- summary + download ---------- */
+
+  function renderSummary(builds) {
+    var totalCost = builds.reduce(function (s, b) { return s + (b.cost_usd || 0); }, 0);
+    var maxMs = builds.reduce(function (mx, b) { return Math.max(mx, b.ms || 0); }, 0);
+    var totalOutTok = builds.reduce(function (s, b) { return s + (b.output_tokens || 0); }, 0);
+
+    var winnerKey = null, winnerScore = -1;
+    builds.forEach(function (b) {
+      if (b.ok && b.judge && typeof b.judge.score === "number" && b.judge.score > winnerScore) {
+        winnerScore = b.judge.score;
+        winnerKey = b.model_key;
+      }
+    });
+
+    var filename = "cbf-run-" + runMeta.id + "-" + yyyymmdd(runMeta.created) + ".json";
+
+    var html =
+      '<section class="stat-strip">' +
+        '<div class="card stat-tile"><span class="hero-num">' + CBF.fmtUSD(totalCost) + '</span><span class="label">Total cost</span></div>' +
+        '<div class="card stat-tile"><span class="hero-num mono">' + CBF.fmtMs(maxMs) + '</span><span class="label">Wall time</span></div>' +
+        '<div class="card stat-tile"><span class="hero-num mono">' + CBF.fmtTok(totalOutTok) + '</span><span class="label">Output tokens</span></div>' +
+        '<div class="card stat-tile"><span class="hero-num" style="font-size:20px">' + (winnerKey ? CBF.logoChip(winnerKey, 18) : "—") + '</span><span class="label">Winner</span></div>' +
+      "</section>" +
+      '<div class="card summary-actions">' +
+        '<div class="actions-row">' +
+          '<button class="btn" id="btnDownload">Download run bundle</button>' +
+          '<button class="btn ghost" id="btnNew">New bench</button>' +
+        "</div>" +
+        '<div class="dim hint-line">Add it to the gallery: node runner/import.mjs ' + escapeHtml(filename) + "</div>" +
+      "</div>";
+
+    document.getElementById("summaryWrap").innerHTML = html;
+
+    document.getElementById("btnDownload").addEventListener("click", function () {
+      downloadBundle(builds, filename);
+    });
+    document.getElementById("btnNew").addEventListener("click", function () {
+      location.reload();
+    });
+  }
+
+  function downloadBundle(builds, filename) {
+    var bundle = {
+      id: runMeta.id,
+      title: runMeta.title,
+      prompt: runMeta.prompt,
+      system_prompt: SYS_PROMPT,
+      kind: runMeta.kind,
+      created: runMeta.created.toISOString(),
+      judge: { model_key: "opus-4.8", provider: "openrouter" },
+      builds: builds.map(function (b) {
+        var out = {
+          model_key: b.model_key,
+          provider: b.provider,
+          provider_model_id: b.provider_model_id,
+          file: b.ok ? b.file : null,
+          ok: b.ok,
+          error: b.error,
+          ms: b.ms,
+          turns: b.turns,
+          input_tokens: b.input_tokens,
+          output_tokens: b.output_tokens,
+          cost_usd: b.cost_usd,
+          tps: b.tps,
+          timeline: b.timeline,
+          judge: b.judge,
+        };
+        if (b.ok && b.html) out.html = b.html;
+        return out;
+      }),
+    };
+
+    var blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  renderShell();
+})();
+</script>
+</body>
+</html>

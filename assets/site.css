@@ -132,11 +132,22 @@ input[type=text]:focus, textarea:focus { border-color: #525252; }
   color: var(--t-ghost); font-size: 13px; text-align: center; padding: 20px;
 }
 
-/* reel mode: pure square grid for screen recording */
+/* reel mode: pure square grid for screen recording — always fits the viewport */
 body.reel { overflow: hidden; }
-body.reel .wrap { max-width: none; padding: 0; }
+body.reel .wrap {
+  max-width: none; padding: 0; height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
 body.reel .topbar, body.reel .no-reel { display: none !important; }
-body.reel .rungrid { grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
+body.reel .rungrid {
+  /* panel side: whichever is tighter — half the width, or half the height minus header chrome */
+  --reel-side: min(calc((100vw - 24px) / 2), calc((100dvh - 64px - 24px) / 2 - 42px));
+  grid-template-columns: repeat(2, var(--reel-side)) !important;
+  justify-content: center; align-content: center;
+  gap: 8px; padding: 8px; width: auto;
+}
+body.reel .panel-head { min-height: 42px; padding: 7px 12px; }
+body.reel .panel-head .cost { font-size: 19px; }
 body.reel .panel-sub { display: none; }
 .reel-foot { display: none; }
 body.reel .reel-foot {

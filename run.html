@@ -4,9 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Run — Code Bench Fun</title>
-<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/site.css?v=3">
 <style>
   /* ---------- run.html page-specific styles ---------- */
+
+  /* full-width layout: the grid is the show — use the screen */
+  body:not(.reel) .wrap { max-width: 1720px; }
+  @media (min-width: 1000px) {
+    .run-head { flex-direction: row !important; align-items: center; gap: 18px !important; flex-wrap: wrap; margin-bottom: 16px !important; }
+    .run-head .back { flex: none; }
+    .run-head .title-row { flex: 1 1 auto; min-width: 0; }
+    .run-head details.prompt { flex: 1 1 100%; order: 10; padding: 6px 14px; }
+    .run-head .actions { margin-left: auto; }
+    .stat-strip { margin-bottom: 16px; }
+    .stat-tile { padding: 10px 8px 8px; }
+    .stat-tile .hero-num { font-size: 22px; }
+  }
 
   .run-head { display: flex; flex-direction: column; gap: 14px; margin-bottom: 22px; }
   .run-head .back { color: var(--t-dim); font-size: 13px; transition: color .2s var(--ease); }
@@ -40,7 +53,7 @@
   .empty-card a.btn { display: inline-block; margin-top: 18px; }
 
   /* reel mode: only first 4 panels visible, exit button, footer */
-  body.reel .rungrid .panel:nth-child(n+5) { display: none; }
+  body.reel .panel.reel-hide { display: none; }
   .reel-exit {
     display: none; position: fixed; top: 14px; right: 14px; z-index: 50;
     width: 34px; height: 34px; border-radius: 999px; background: rgba(23,23,23,.8);
@@ -63,7 +76,7 @@
   <div id="content"></div>
 </div>
 
-<script src="assets/site.js"></script>
+<script src="assets/site.js?v=3"></script>
 <script>
 (function () {
   "use strict";
@@ -106,7 +119,11 @@
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
 
-  const SCALE_MS = 20000;
+  // race length for the slowest model, seconds; ?replay=12 shortens the cycle
+  let SCALE_MS = 20000;
+  const replayParam = parseFloat(params.get("replay"));
+  if (replayParam >= 5 && replayParam <= 120) SCALE_MS = replayParam * 1000;
+  const alwaysLoop = params.get("loop") === "1";
   let handles = [];
   let loopTimer = null;
   let run = null;
@@ -187,6 +204,36 @@
       "</footer>";
 
     content.innerHTML = headHtml + statHtml + gridHtml + tableHtml + sysHtml + footHtml;
+
+    // ---- fit the whole grid on screen: pick cols + panel size so every model is visible ----
+    function sizeGrid() {
+      const grid = content.querySelector(".rungrid");
+      if (!grid) return;
+      const n = builds.length;
+      if (document.body.classList.contains("reel") || window.innerWidth < 1000 || n === 0) {
+        grid.style.gridTemplateColumns = "";
+        grid.style.justifyContent = "";
+        return;
+      }
+      const CHROME = 76;   // panel head + sub row height
+      const GAP = 12;
+      const availW = grid.clientWidth || content.clientWidth;
+      const availH = window.innerHeight - 24; // grid can own the viewport once scrolled to
+      let best = { cols: 2, side: 0 };
+      for (let cols = 2; cols <= Math.min(4, n); cols++) {
+        const rows = Math.ceil(n / cols);
+        const sideW = (availW - (cols - 1) * GAP) / cols;
+        const sideH = (availH - (rows - 1) * GAP) / rows - CHROME;
+        const side = Math.min(sideW, sideH);
+        if (side > best.side) best = { cols: cols, side: side };
+      }
+      const side = Math.max(240, Math.floor(best.side)); // floor so tiny screens still get usable panels
+      grid.style.gridTemplateColumns = "repeat(" + best.cols + ", " + side + "px)";
+      grid.style.justifyContent = "center";
+    }
+    sizeGrid();
+    window.addEventListener("resize", sizeGrid);
+    document.body.addEventListener("cbf-reel-change", sizeGrid);
 
     // ---- wire up interactions ----
     wireReplay(builds, maxMs);
@@ -330,7 +377,7 @@
           judgeEl.classList.add("show");
         }
         doneCount++;
-        if (doneCount >= total && document.body.classList.contains("reel")) {
+        if (doneCount >= total && (alwaysLoop || document.body.classList.contains("reel"))) {
           scheduleReelLoop(builds, maxMs);
         }
       });
@@ -346,7 +393,7 @@
   function scheduleReelLoop(builds, maxMs) {
     if (loopTimer) clearTimeout(loopTimer);
     loopTimer = setTimeout(function () {
-      if (document.body.classList.contains("reel")) startCounters(builds, maxMs);
+      if (alwaysLoop || document.body.classList.contains("reel")) startCounters(builds, maxMs);
     }, 4000);
   }
 
@@ -365,6 +412,16 @@
 
   function enterReel() {
     document.body.classList.add("reel");
+    // reel shows the first 4 SUCCESSFUL builds — failed ones don't waste a slot
+    if (run && Array.isArray(run.builds)) {
+      let shown = 0;
+      content.querySelectorAll(".rungrid .panel").forEach(function (p, i) {
+        const b = run.builds[i];
+        const keep = b && b.ok && shown < 4;
+        if (keep) shown++;
+        p.classList.toggle("reel-hide", !keep);
+      });
+    }
     if (!document.querySelector(".reel-foot")) {
       const foot = document.createElement("div");
       foot.className = "reel-foot";
@@ -373,13 +430,16 @@
     }
     const btn = document.getElementById("btnReel");
     if (btn) btn.textContent = "Exit reel";
+    document.body.dispatchEvent(new Event("cbf-reel-change"));
   }
 
   function exitReel() {
     document.body.classList.remove("reel");
+    content.querySelectorAll(".panel.reel-hide").forEach(function (p) { p.classList.remove("reel-hide"); });
     if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
     const btn = document.getElementById("btnReel");
     if (btn) btn.textContent = "Reel mode";
+    document.body.dispatchEvent(new Event("cbf-reel-change"));
   }
 
   function wireReel(builds, maxMs) {
@@ -394,6 +454,9 @@
     });
     const exitBtn = document.getElementById("reelExit");
     if (exitBtn) exitBtn.addEventListener("click", exitReel);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && document.body.classList.contains("reel")) exitReel();
+    });
   }
 })();
 </script>
