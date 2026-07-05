@@ -1,0 +1,73 @@
+<svg width="880" height="300" viewBox="0 0 880 300" fill="none" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+  <rect width="880" height="300" rx="18" fill="#0a0a0a"/>
+  <rect x="0.5" y="0.5" width="879" height="299" rx="17.5" stroke="#262626"/>
+
+  <!-- title block -->
+  <text x="40" y="76" font-size="34" font-weight="300" fill="#ffffff" letter-spacing="-0.5">One prompt. Every model.</text>
+  <text x="40" y="106" font-size="15" fill="#737373">Same game, built one-shot by a squad of AIs —</text>
+  <text x="40" y="128" font-size="15" fill="#737373">timed, token-counted, priced, judged by Opus 4.8.</text>
+
+  <text x="40" y="180" font-size="11" fill="#525252" letter-spacing="2.5">CODE BENCH FUN</text>
+  <rect x="40" y="196" width="130" height="34" rx="8" fill="#262626" stroke="#404040"/>
+  <text x="58" y="218" font-size="13" fill="#ffffff">Watch a run</text>
+  <rect x="182" y="196" width="130" height="34" rx="8" fill="none" stroke="#333333"/>
+  <text x="200" y="218" font-size="13" fill="#a3a3a3">Bench it live</text>
+
+  <!-- 2x2 result grid -->
+  <g transform="translate(452,28)">
+    <!-- panel: Fable 5 -->
+    <g transform="translate(0,0)">
+      <rect width="192" height="116" rx="10" fill="#171717" stroke="#262626"/>
+      <circle cx="20" cy="19" r="7" fill="#D97757"/>
+      <text x="34" y="24" font-size="13" font-weight="600" fill="#D97757">Fable 5</text>
+      <text x="182" y="25" font-size="15" font-weight="600" fill="#ffffff" text-anchor="end" font-family="ui-monospace,Menlo,monospace">$3.00</text>
+      <path d="M12 96 L60 96 L74 78 L84 78 L84 116 L12 116 Z" fill="#6b4c2e" opacity="0.8"/>
+      <path d="M180 96 L120 96 L108 80 L100 80 L100 116 L180 116 Z" fill="#6b4c2e" opacity="0.8"/>
+      <circle cx="92" cy="56" r="5" fill="#e05545"/>
+      <circle cx="106" cy="62" r="5" fill="#4a7fe0"/>
+      <circle cx="150" cy="30" r="9" fill="#f5d06b" opacity="0.75"/>
+      <text x="16" y="46" font-size="10" fill="#737373" font-family="ui-monospace,Menlo,monospace">★ 9.2 · 13m 45s</text>
+    </g>
+    <!-- panel: GLM 5.2 -->
+    <g transform="translate(200,0)">
+      <rect width="192" height="116" rx="10" fill="#171717" stroke="#262626"/>
+      <rect x="12" y="11" width="16" height="16" rx="4" fill="#F5F5F5"/>
+      <text x="16.5" y="23.5" font-size="12" font-weight="700" fill="#0a0a0a">Z</text>
+      <text x="34" y="24" font-size="13" font-weight="600" fill="#7AA2FF">GLM 5.2</text>
+      <text x="182" y="25" font-size="15" font-weight="600" fill="#ffffff" text-anchor="end" font-family="ui-monospace,Menlo,monospace">$0.06</text>
+      <path d="M12 100 L70 100 L80 86 L86 86 L86 116 L12 116 Z" fill="#3a3a52" opacity="0.9"/>
+      <path d="M180 100 L124 100 L114 88 L106 88 L106 116 L180 116 Z" fill="#3a3a52" opacity="0.9"/>
+      <circle cx="150" cy="32" r="8" fill="#dfe6f5" opacity="0.5"/>
+      <circle cx="94" cy="70" r="5" fill="#e05545"/>
+      <circle cx="112" cy="74" r="5" fill="#4a7fe0"/>
+      <text x="16" y="46" font-size="10" fill="#737373" font-family="ui-monospace,Menlo,monospace">night mode · 14m</text>
+    </g>
+    <!-- panel: GPT 5.5 -->
+    <g transform="translate(0,124)">
+      <rect width="192" height="116" rx="10" fill="#171717" stroke="#262626"/>
+      <circle cx="20" cy="19" r="8" fill="none" stroke="#E8E8E8" stroke-width="1.6"/>
+      <circle cx="20" cy="19" r="3.4" fill="none" stroke="#E8E8E8" stroke-width="1.4"/>
+      <text x="34" y="24" font-size="13" font-weight="600" fill="#6AC4A8">GPT 5.5</text>
+      <text x="182" y="25" font-size="15" font-weight="600" fill="#ffffff" text-anchor="end" font-family="ui-monospace,Menlo,monospace">$0.31</text>
+      <path d="M12 98 L64 98 L76 82 L86 82 L86 116 L12 116 Z" fill="#5c5750" opacity="0.85"/>
+      <path d="M180 98 L122 98 L112 84 L104 84 L104 116 L180 116 Z" fill="#5c5750" opacity="0.85"/>
+      <circle cx="96" cy="60" r="5" fill="#e05545"/>
+      <circle cx="110" cy="54" r="5" fill="#4a7fe0"/>
+      <circle cx="42" cy="34" r="8" fill="#f0e6c8" opacity="0.5"/>
+      <text x="16" y="46" font-size="10" fill="#737373" font-family="ui-monospace,Menlo,monospace">★ 8.5 · openai direct</text>
+    </g>
+    <!-- panel: Opus 4.8 -->
+    <g transform="translate(200,124)">
+      <rect width="192" height="116" rx="10" fill="#171717" stroke="#262626"/>
+      <circle cx="20" cy="19" r="7" fill="#D97757"/>
+      <text x="34" y="24" font-size="13" font-weight="600" fill="#D97757">Opus 4.8</text>
+      <text x="182" y="25" font-size="15" font-weight="600" fill="#ffffff" text-anchor="end" font-family="ui-monospace,Menlo,monospace">$1.63</text>
+      <path d="M12 94 L58 94 L70 76 L82 76 L82 116 L12 116 Z" fill="#7a5c38" opacity="0.85"/>
+      <path d="M180 94 L126 94 L116 78 L106 78 L106 116 L180 116 Z" fill="#7a5c38" opacity="0.85"/>
+      <circle cx="90" cy="46" r="5" fill="#e05545"/>
+      <circle cx="104" cy="42" r="5" fill="#4a7fe0"/>
+      <circle cx="152" cy="32" r="9" fill="#f5d06b" opacity="0.7"/>
+      <text x="16" y="46" font-size="10" fill="#737373" font-family="ui-monospace,Menlo,monospace">★ 9.2 · 14m 58s</text>
+    </g>
+  </g>
+</svg>

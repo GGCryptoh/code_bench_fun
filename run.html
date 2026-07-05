@@ -66,6 +66,25 @@
   @media (max-width: 720px) {
     .run-head .title-row { flex-direction: column; align-items: flex-start; gap: 6px; }
   }
+
+  /* rerun modal */
+  .rr-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(4px); z-index: 90; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .rr-modal { background: #171717; border: 1px solid var(--border-hi); border-radius: var(--r-lg); padding: 22px; width: min(680px, 100%); max-height: 88vh; overflow-y: auto; }
+  .rr-modal h2 { margin: 0 0 4px; font-size: 18px; }
+  .rr-keys { font-size: 11px; color: var(--t-ghost); font-family: var(--mono); margin-bottom: 14px; }
+  .rr-keys b { color: var(--t-mute); font-weight: 600; }
+  .rr-models { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin: 12px 0; }
+  .rr-model { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--r-sm); background: rgba(23,23,23,.6); cursor: pointer; transition: border-color .15s var(--ease), background .15s var(--ease); }
+  .rr-model.on { border-color: #525252; background: rgba(38,38,38,.7); }
+  .rr-model .chip { font-size: 13px; } .rr-model .chip svg { width: 16px; height: 16px; }
+  .rr-model .tick { margin-left: auto; color: var(--t-ghost); font-family: var(--mono); font-size: 12px; }
+  .rr-model.on .tick { color: var(--t-hero); }
+  .rr-mode { display: flex; gap: 8px; margin: 12px 0; }
+  .rr-mode button { flex: 1; }
+  .rr-mode button.sel { border-color: #525252; background: #333; }
+  .rr-cmd { background: rgba(10,10,10,.9); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 12px 14px; font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: var(--t-body); white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow-y: auto; }
+  .rr-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .rr-est { font-size: 12px; color: var(--t-dim); font-family: var(--mono); margin-left: auto; }
 </style>
 </head>
 <body>
@@ -170,6 +189,7 @@
         '<div class="actions">' +
           '<button class="btn" id="btnReplay">Replay</button>' +
           '<button class="btn ghost" id="btnReel">Reel mode</button>' +
+          '<button class="btn ghost" id="btnRerun">Rerun&hellip;</button>' +
         "</div>" +
       "</section>";
 
@@ -235,10 +255,21 @@
     window.addEventListener("resize", sizeGrid);
     document.body.addEventListener("cbf-reel-change", sizeGrid);
 
+    // start the games only once this page is fully loaded (or right away if it already is)
+    function armFrames() {
+      content.querySelectorAll("iframe[data-src]").forEach(function (f) {
+        f.src = f.dataset.src;
+        f.removeAttribute("data-src");
+      });
+    }
+    if (document.readyState === "complete") setTimeout(armFrames, 0);
+    else window.addEventListener("load", function () { setTimeout(armFrames, 0); });
+
     // ---- wire up interactions ----
     wireReplay(builds, maxMs);
     wireReel(builds, maxMs);
     wireSkip(builds);
+    wireRerun();
 
     startCounters(builds, maxMs);
 
@@ -248,8 +279,9 @@
   function buildPanel(build, i) {
     const ok = !!build.ok;
     const chip = CBF.logoChip(build.model_key, 20);
+    // src assigned after page load — a game that never fires `load` must not hold the page hostage
     const frameInner = ok
-      ? '<iframe sandbox="allow-scripts" loading="eager" src="' + escapeHtml(build.file) + '"></iframe>'
+      ? '<iframe sandbox="allow-scripts" loading="eager" data-src="' + escapeHtml(build.file) + '"></iframe>'
       : '<div class="fail">' + escapeHtml((CBF.MODELS[build.model_key] && CBF.MODELS[build.model_key].name) || build.model_key) +
         " failed: " + escapeHtml(build.error || "unknown error") + "</div>";
 
@@ -455,8 +487,141 @@
     const exitBtn = document.getElementById("reelExit");
     if (exitBtn) exitBtn.addEventListener("click", exitReel);
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && document.body.classList.contains("reel")) exitReel();
+      if (e.key !== "Escape") return;
+      if (document.getElementById("rrOverlay")) closeRerun();
+      else if (document.body.classList.contains("reel")) exitReel();
     });
+  }
+
+  /* ---------- rerun modal: rebuild this prompt with a different squad ----------
+     shortcuts while open: f = flip selection · r = random squad · a = all · n = none · Esc = close */
+  const rrSel = new Set();
+
+  function shellQuote(s) {
+    return "'" + String(s).replace(/'/g, "'\\''") + "'";
+  }
+
+  function rrCommand() {
+    const keys = Object.keys(CBF.MODELS).filter(function (k) { return rrSel.has(k); });
+    const mergeMode = document.getElementById("rrModeMerge").classList.contains("sel");
+    if (mergeMode) {
+      return "node runner/bench.mjs --id " + run.id + " --models " + keys.join(",") + " --merge";
+    }
+    const newId = run.id.replace(/-v\d+$/, "") + "-v2";
+    return "node runner/bench.mjs --id " + newId +
+      " --title " + shellQuote((run.title || run.id) + " v2") +
+      " --kind " + (run.kind === "interactive" ? "interactive" : "simulation") +
+      " --models " + keys.join(",") +
+      " --prompt " + shellQuote(run.prompt || "");
+  }
+
+  function rrRefresh() {
+    document.querySelectorAll(".rr-model").forEach(function (el) {
+      const on = rrSel.has(el.dataset.key);
+      el.classList.toggle("on", on);
+      el.querySelector(".tick").textContent = on ? "[x]" : "[ ]";
+    });
+    const cmdEl = document.getElementById("rrCmd");
+    if (cmdEl) cmdEl.textContent = rrSel.size ? rrCommand() : "# pick at least one model";
+    let est = 0;
+    rrSel.forEach(function (k) {
+      const m = CBF.MODELS[k];
+      est += (m.in_per_m * 600 + m.out_per_m * 8000) / 1e6;
+    });
+    const estEl = document.getElementById("rrEst");
+    if (estEl) estEl.textContent = rrSel.size + " models · ≈ " + CBF.fmtUSD(est);
+  }
+
+  function rrShortcuts(e) {
+    if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    const all = Object.keys(CBF.MODELS);
+    if (e.key === "f") { // flip: old squad out, everyone else in
+      all.forEach(function (k) { rrSel.has(k) ? rrSel.delete(k) : rrSel.add(k); });
+    } else if (e.key === "r") { // random squad, same size (min 2)
+      const size = Math.max(2, rrSel.size || 4);
+      rrSel.clear();
+      all.slice().sort(function () { return Math.random() - 0.5; }).slice(0, size).forEach(function (k) { rrSel.add(k); });
+    } else if (e.key === "a") { all.forEach(function (k) { rrSel.add(k); }); }
+    else if (e.key === "n") { rrSel.clear(); }
+    else return;
+    e.preventDefault();
+    rrRefresh();
+  }
+
+  function openRerun() {
+    if (document.getElementById("rrOverlay") || !run) return;
+    rrSel.clear();
+    (run.builds || []).forEach(function (b) { if (CBF.MODELS[b.model_key]) rrSel.add(b.model_key); });
+
+    const overlay = document.createElement("div");
+    overlay.className = "rr-overlay";
+    overlay.id = "rrOverlay";
+    overlay.innerHTML =
+      '<div class="rr-modal">' +
+        "<h2>Rerun this game</h2>" +
+        '<div class="rr-keys"><b>f</b> flip squad &nbsp;·&nbsp; <b>r</b> random &nbsp;·&nbsp; <b>a</b> all &nbsp;·&nbsp; <b>n</b> none &nbsp;·&nbsp; <b>esc</b> close</div>' +
+        '<div class="rr-models">' +
+        Object.keys(CBF.MODELS).map(function (k) {
+          return '<div class="rr-model" data-key="' + k + '">' + CBF.logoChip(k, 16) + '<span class="tick">[ ]</span></div>';
+        }).join("") +
+        "</div>" +
+        '<div class="rr-mode">' +
+          '<button class="btn ghost sel" id="rrModeMerge" title="replace these models inside this run">Merge into this run</button>' +
+          '<button class="btn ghost" id="rrModeNew" title="same prompt, brand new run">New run (' + escapeHtml(run.id) + '-v2)</button>' +
+        "</div>" +
+        '<div class="rr-cmd mono" id="rrCmd"></div>' +
+        '<div class="rr-foot">' +
+          '<button class="btn" id="rrCopy">Copy command</button>' +
+          '<button class="btn ghost" id="rrClose">Close</button>' +
+          '<span class="rr-est" id="rrEst"></span>' +
+        "</div>" +
+      "</div>";
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) return closeRerun();
+      const card = e.target.closest(".rr-model");
+      if (card) {
+        rrSel.has(card.dataset.key) ? rrSel.delete(card.dataset.key) : rrSel.add(card.dataset.key);
+        rrRefresh();
+      }
+    });
+    document.getElementById("rrClose").addEventListener("click", closeRerun);
+    document.getElementById("rrModeMerge").addEventListener("click", function () { rrMode(true); });
+    document.getElementById("rrModeNew").addEventListener("click", function () { rrMode(false); });
+    document.getElementById("rrCopy").addEventListener("click", function () {
+      const cmd = rrSel.size ? rrCommand() : "";
+      if (!cmd) return;
+      const btn = document.getElementById("rrCopy");
+      (navigator.clipboard ? navigator.clipboard.writeText(cmd) : Promise.reject()).then(function () {
+        btn.textContent = "Copied — paste in your terminal";
+      }).catch(function () {
+        const ta = document.createElement("textarea");
+        ta.value = cmd; document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); ta.remove();
+        btn.textContent = "Copied — paste in your terminal";
+      });
+      setTimeout(function () { btn.textContent = "Copy command"; }, 2500);
+    });
+    document.addEventListener("keydown", rrShortcuts);
+    rrRefresh();
+  }
+
+  function rrMode(merge) {
+    document.getElementById("rrModeMerge").classList.toggle("sel", merge);
+    document.getElementById("rrModeNew").classList.toggle("sel", !merge);
+    rrRefresh();
+  }
+
+  function closeRerun() {
+    const o = document.getElementById("rrOverlay");
+    if (o) o.remove();
+    document.removeEventListener("keydown", rrShortcuts);
+  }
+
+  function wireRerun() {
+    const btn = document.getElementById("btnRerun");
+    if (btn) btn.addEventListener("click", openRerun);
   }
 })();
 </script>

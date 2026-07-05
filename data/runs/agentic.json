@@ -1,0 +1,497 @@
+{
+  "id": "agentic",
+  "title": "A cartoon of 20 seconds with an agentic family. 2d cartoon paper mache style like sifu the game kicked-up dust and debris particles, parallax sky with drifting clouds and a",
+  "prompt": "A cartoon of 20 seconds with an agentic family. 2d cartoon paper mache style like sifu the game kicked-up dust and debris particles, parallax sky with drifting clouds and a warm sun.no user input, pure autoplaying simulation.",
+  "system_prompt": "You are competing in a one-shot game-building benchmark. Reply with ONE complete self-contained HTML file and nothing else — no markdown fences, no commentary before or after. Hard rules: no external requests of any kind (no CDNs, fonts, images, analytics); everything inline. The file runs inside a sandboxed iframe (sandbox=\"allow-scripts\"): never use localStorage, sessionStorage, cookies, alert, prompt or confirm. Fill the whole viewport (html,body{margin:0;height:100%;overflow:hidden}) and look good in a SQUARE frame. If the request is a simulation: start automatically, run and loop forever, zero user input. If interactive: show minimal on-screen instructions and support both touch and keyboard. Push visual polish: cohesive palette, smooth motion, particles, depth — it will be judged on looks in a screen recording.",
+  "kind": "simulation",
+  "created": "2026-07-05T21:56:27.901Z",
+  "judge": {
+    "model_key": "opus-4.8",
+    "provider": "claude-cli"
+  },
+  "builds": [
+    {
+      "model_key": "glm-5.2",
+      "provider": "openrouter",
+      "provider_model_id": "z-ai/glm-5.2",
+      "ok": false,
+      "error": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 48000 tokens, but can only afford 2714. To increase, visit https://openrouter.ai/workspaces/default/keys/4e27f56bf188954e72518606faa471bb9a922370dbe5f3093046f07914d81822 and adjust the key's monthly lim",
+      "ms": 1210,
+      "turns": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_usd": 0,
+      "tps": 0,
+      "timeline": null
+    },
+    {
+      "model_key": "sonnet-5",
+      "provider": "claude-cli",
+      "provider_model_id": "claude-sonnet-5",
+      "ok": false,
+      "error": "no html in response",
+      "ms": 710397,
+      "turns": 1,
+      "input_tokens": 84420,
+      "output_tokens": 66864,
+      "cost_usd": 1.4326662,
+      "tps": 94.1,
+      "timeline": null
+    },
+    {
+      "model_key": "haiku-4.5",
+      "provider": "claude-cli",
+      "provider_model_id": "claude-haiku-4-5-20251001",
+      "ok": true,
+      "error": null,
+      "ms": 45771,
+      "turns": 1,
+      "input_tokens": 7150,
+      "output_tokens": 8378,
+      "cost_usd": 0.05618,
+      "tps": 183,
+      "timeline": null,
+      "file": "games/agentic/haiku-4.5.html",
+      "judge": {
+        "works": 8,
+        "fidelity": 7,
+        "polish": 6,
+        "creativity": 6,
+        "score": 7,
+        "verdict": "Runs well; parallax sky, dust & walking family, but jump is dead code & paper-mache thin"
+      }
+    },
+    {
+      "model_key": "gpt-5.1",
+      "provider": "openai",
+      "provider_model_id": "gpt-5.1",
+      "ok": true,
+      "error": null,
+      "ms": 92775,
+      "turns": 1,
+      "input_tokens": 234,
+      "output_tokens": 10724,
+      "cost_usd": 0.1075325,
+      "tps": 115.6,
+      "timeline": [
+        [
+          0,
+          0
+        ],
+        [
+          47818,
+          2
+        ],
+        [
+          48222,
+          114
+        ],
+        [
+          48624,
+          237
+        ],
+        [
+          49033,
+          361
+        ],
+        [
+          49547,
+          463
+        ],
+        [
+          50066,
+          496
+        ],
+        [
+          50476,
+          601
+        ],
+        [
+          51014,
+          817
+        ],
+        [
+          51530,
+          841
+        ],
+        [
+          51930,
+          959
+        ],
+        [
+          52343,
+          1087
+        ],
+        [
+          52778,
+          1133
+        ],
+        [
+          53179,
+          1215
+        ],
+        [
+          53600,
+          1330
+        ],
+        [
+          54024,
+          1488
+        ],
+        [
+          54426,
+          1603
+        ],
+        [
+          54890,
+          1681
+        ],
+        [
+          55304,
+          1767
+        ],
+        [
+          55709,
+          1847
+        ],
+        [
+          56110,
+          1982
+        ],
+        [
+          56559,
+          2084
+        ],
+        [
+          57073,
+          2120
+        ],
+        [
+          57492,
+          2141
+        ],
+        [
+          57935,
+          2161
+        ],
+        [
+          58426,
+          2196
+        ],
+        [
+          58853,
+          2215
+        ],
+        [
+          59290,
+          2239
+        ],
+        [
+          59718,
+          2253
+        ],
+        [
+          60121,
+          2317
+        ],
+        [
+          60522,
+          2422
+        ],
+        [
+          60927,
+          2526
+        ],
+        [
+          61330,
+          2630
+        ],
+        [
+          61747,
+          2735
+        ],
+        [
+          62149,
+          2809
+        ],
+        [
+          62549,
+          2897
+        ],
+        [
+          62963,
+          2986
+        ],
+        [
+          63365,
+          3030
+        ],
+        [
+          63767,
+          3170
+        ],
+        [
+          64172,
+          3277
+        ],
+        [
+          64581,
+          3373
+        ],
+        [
+          64992,
+          3459
+        ],
+        [
+          65402,
+          3571
+        ],
+        [
+          65807,
+          3649
+        ],
+        [
+          66209,
+          3760
+        ],
+        [
+          66622,
+          3861
+        ],
+        [
+          67026,
+          3946
+        ],
+        [
+          67442,
+          4069
+        ],
+        [
+          67849,
+          4176
+        ],
+        [
+          68261,
+          4288
+        ],
+        [
+          68673,
+          4380
+        ],
+        [
+          69087,
+          4473
+        ],
+        [
+          69499,
+          4572
+        ],
+        [
+          69903,
+          4677
+        ],
+        [
+          70329,
+          4765
+        ],
+        [
+          70739,
+          4836
+        ],
+        [
+          71209,
+          4938
+        ],
+        [
+          71622,
+          5045
+        ],
+        [
+          72028,
+          5145
+        ],
+        [
+          72440,
+          5226
+        ],
+        [
+          72858,
+          5316
+        ],
+        [
+          73311,
+          5401
+        ],
+        [
+          73729,
+          5546
+        ],
+        [
+          74130,
+          5663
+        ],
+        [
+          76732,
+          5738
+        ],
+        [
+          77144,
+          5845
+        ],
+        [
+          77545,
+          5950
+        ],
+        [
+          77947,
+          6275
+        ],
+        [
+          78347,
+          6638
+        ],
+        [
+          78752,
+          6939
+        ],
+        [
+          79155,
+          7013
+        ],
+        [
+          79561,
+          7129
+        ],
+        [
+          79971,
+          7225
+        ],
+        [
+          80380,
+          7317
+        ],
+        [
+          80783,
+          7422
+        ],
+        [
+          81211,
+          7550
+        ],
+        [
+          81617,
+          7671
+        ],
+        [
+          82018,
+          7776
+        ],
+        [
+          82431,
+          7979
+        ],
+        [
+          82831,
+          8082
+        ],
+        [
+          83246,
+          8196
+        ],
+        [
+          83653,
+          8286
+        ],
+        [
+          84279,
+          8348
+        ],
+        [
+          84680,
+          8461
+        ],
+        [
+          85133,
+          8552
+        ],
+        [
+          85540,
+          8730
+        ],
+        [
+          85944,
+          8844
+        ],
+        [
+          86353,
+          8957
+        ],
+        [
+          86753,
+          9071
+        ],
+        [
+          87164,
+          9195
+        ],
+        [
+          87583,
+          9285
+        ],
+        [
+          88117,
+          9295
+        ],
+        [
+          88524,
+          9544
+        ],
+        [
+          88925,
+          9625
+        ],
+        [
+          89331,
+          9822
+        ],
+        [
+          89732,
+          9950
+        ],
+        [
+          90661,
+          10028
+        ],
+        [
+          91077,
+          10194
+        ],
+        [
+          91489,
+          10487
+        ],
+        [
+          92108,
+          10536
+        ],
+        [
+          92511,
+          10658
+        ],
+        [
+          92775,
+          10724
+        ]
+      ],
+      "file": "games/agentic/gpt-5.1.html",
+      "judge": {
+        "works": 8,
+        "fidelity": 8,
+        "polish": 7,
+        "creativity": 7,
+        "score": 7.7,
+        "verdict": "Runs well: parallax clouds, sun, walking paper-mache family w/ dust; floating bits nearly frozen (dt/60 bug)"
+      }
+    }
+  ]
+}

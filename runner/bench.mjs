@@ -343,7 +343,11 @@ export function extractHtml(raw, modelKey) {
     return { ok: false, html: null, error: "no html in response", warning: null };
   }
 
-  const html = text.slice(startIdx, endIdx + "</html>".length);
+  let html = text.slice(startIdx, endIdx + "</html>".length);
+
+  // Models sneak in Google-Fonts-style imports despite the rules; a hanging external
+  // fetch keeps the page spinner alive forever, so strip them outright.
+  html = html.replace(/@import\s+url\(\s*["']?https?:\/\/[^)]*\)\s*;?/gi, "");
 
   let warning = null;
   if (/https?:\/\/[^"'\s]*\.(js|css|woff2?|png|jpg)/i.test(html)) {
@@ -725,19 +729,36 @@ function makeFailedBuild(modelKey, provider, providerModelId, ms, error) {
  * ========================================================================== */
 async function runOneModel({ runId, modelKey, prompt, forceOpenrouter }) {
   const entry = MODELS[modelKey];
-  const useCli = !!entry.cli_id && !forceOpenrouter;
-  if (useCli) {
-    return runClaudeCliBuild({ runId, modelKey, entry, prompt });
-  }
-  // OpenAI models go direct to api.openai.com when a key is available (exact first-party
-  // billing, no OpenRouter spend-limit preauth); --force-openrouter overrides.
-  if (entry.openai_id && !forceOpenrouter && hasOpenAIKey()) {
-    return runOpenRouterBuild({ runId, modelKey, entry, prompt, api: "openai" });
-  }
-  if (!entry.or_id) {
-    return { build: makeFailedBuild(modelKey, "openrouter", null, 0, "model has no or_id configured"), html: null };
-  }
-  return runOpenRouterBuild({ runId, modelKey, entry, prompt });
+  const dispatch = () => {
+    const useCli = !!entry.cli_id && !forceOpenrouter;
+    if (useCli) {
+      return runClaudeCliBuild({ runId, modelKey, entry, prompt });
+    }
+    // OpenAI models go direct to api.openai.com when a key is available (exact first-party
+    // billing, no OpenRouter spend-limit preauth); --force-openrouter overrides.
+    if (entry.openai_id && !forceOpenrouter && hasOpenAIKey()) {
+      return runOpenRouterBuild({ runId, modelKey, entry, prompt, api: "openai" });
+    }
+    if (!entry.or_id) {
+      return Promise.resolve({ build: makeFailedBuild(modelKey, "openrouter", null, 0, "model has no or_id configured"), html: null });
+    }
+    return runOpenRouterBuild({ runId, modelKey, entry, prompt });
+  };
+
+  const first = await dispatch();
+  // One automatic retry when a model answered but produced no complete HTML document
+  // (truncation, fences, commentary). Money errors (402 etc.) are NOT retried.
+  if (first.build.ok || !/no html in response/i.test(first.build.error || "")) return first;
+
+  process.stderr.write(`[${modelKey}] no html — retrying once\n`);
+  const second = await dispatch();
+  // Honest accounting: the build cost both attempts.
+  second.build.cost_usd = round((first.build.cost_usd || 0) + (second.build.cost_usd || 0));
+  second.build.ms = (first.build.ms || 0) + (second.build.ms || 0);
+  second.build.input_tokens = (first.build.input_tokens || 0) + (second.build.input_tokens || 0);
+  second.build.output_tokens = (first.build.output_tokens || 0) + (second.build.output_tokens || 0);
+  second.build.turns = (first.build.turns || 1) + (second.build.turns || 1);
+  return second;
 }
 
 /* ============================================================================

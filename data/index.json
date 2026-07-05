@@ -1,6 +1,26 @@
 {
-  "updated": "2026-07-05T20:49:35.142Z",
+  "updated": "2026-07-05T21:56:27.907Z",
   "runs": [
+    {
+      "id": "agentic",
+      "title": "A cartoon of 20 seconds with an agentic family. 2d cartoon paper mache style like sifu the game kicked-up dust and debris particles, parallax sky with drifting clouds and a",
+      "prompt": "A cartoon of 20 seconds with an agentic family. 2d cartoon paper mache style like sifu the game kicked-up dust and debris particles, parallax sky with drifting clouds and a warm sun.no user input, pure autoplaying simulation.",
+      "kind": "simulation",
+      "created": "2026-07-05T21:56:27.901Z",
+      "models": [
+        "glm-5.2",
+        "sonnet-5",
+        "haiku-4.5",
+        "gpt-5.1"
+      ],
+      "cover": "games/agentic/gpt-5.1.html",
+      "best": "gpt-5.1",
+      "totals": {
+        "cost_usd": 1.596379,
+        "output_tokens": 85966,
+        "ms": 710397
+      }
+    },
     {
       "id": "cars-vs-canyon",
       "title": "Cars vs Canyon",

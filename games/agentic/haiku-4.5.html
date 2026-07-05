@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic Family</title>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #f5e6d3;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        const game = {
+            time: 0,
+            cycleLength: 1200,
+            particles: [],
+            agents: []
+        };
+        
+        class Particle {
+            constructor(x, y, vx, vy, life, size = 2, color = null) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.life = life;
+                this.maxLife = life;
+                this.size = size;
+                this.color = color || `hsl(${30 + Math.random() * 20}, 60%, ${45 + Math.random() * 15}%)`;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.08;
+                this.vx *= 0.99;
+                this.rotation += this.rotationSpeed;
+                this.life--;
+            }
+            
+            draw(ctx) {
+                const alpha = (this.life / this.maxLife) * 0.6;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.fillStyle = this.color.replace(')', `, ${alpha})`).replace('hsl', 'hsla');
+                ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
+                ctx.restore();
+            }
+        }
+        
+        class Agent {
+            constructor(x, y, family) {
+                this.x = x;
+                this.y = y;
+                this.family = family;
+                this.targetX = x;
+                this.targetY = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.walkSpeed = family === 'child' ? 1.2 : 0.8;
+                this.scale = family === 'child' ? 0.65 : 1;
+                this.baseColor = family === 'child' ?
+                    ['#E84C3D', '#4ECDC4'][Math.floor(Math.random() * 2)] :
+                    ['#D4A574', '#8B5A8E'][Math.floor(Math.random() * 2)];
+                this.limbOffset = Math.random() * Math.PI * 2;
+                this.headTilt = 0;
+                this.actionTimer = 0;
+                this.actionType = 'walk';
+                this.emitProbability = family === 'child' ? 0.15 : 0.08;
+            }
+            
+            chooseAction() {
+                const actions = ['walk', 'idle', 'jump'];
+                const weights = [0.6, 0.3, 0.1];
+                const rand = Math.random();
+                let sum = 0;
+                for (let i = 0; i < weights.length; i++) {
+                    sum += weights[i];
+                    if (rand < sum) {
+                        this.actionType = actions[i];
+                        break;
+                    }
+                }
+                this.actionTimer = Math.random() * 120 + 60;
+                
+                if (this.actionType === 'walk') {
+                    this.targetX = Math.random() * (canvas.width - 100) + 50;
+                    this.targetY = canvas.height * 0.62 + (Math.random() - 0.5) * 20;
+                }
+            }
+            
+            update() {
+                this.actionTimer--;
+                if (this.actionTimer <= 0) {
+                    this.chooseAction();
+                }
+                
+                if (this.actionType === 'walk') {
+                    const dx = this.targetX - this.x;
+                    const dy = this.targetY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist > 3) {
+                        this.vx += (dx / dist) * this.walkSpeed * 0.05;
+                        this.vy += (dy / dist) * this.walkSpeed * 0.02;
+                    } else {
+                        this.vx *= 0.9;
+                        this.vy *= 0.9;
+                    }
+                } else if (this.actionType === 'idle') {
+                    this.vx *= 0.95;
+                    this.vy *= 0.95;
+                    this.headTilt = Math.sin(game.time * 0.02) * 0.1;
+                } else if (this.actionType === 'jump') {
+                    if (this.actionTimer === Math.floor(this.actionTimer)) {
+                        this.vy = -8;
+                    }
+                }
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.3;
+                
+                if (this.y > canvas.height * 0.65) {
+                    this.y = canvas.height * 0.65;
+                    this.vy *= -0.3;
+                }
+                if (this.x < 30) this.x = 30;
+                if (this.x > canvas.width - 30) this.x = canvas.width - 30;
+                
+                if (Math.random() < this.emitProbability && Math.abs(this.vx) > 0.3) {
+                    const dustCount = this.family === 'child' ? 2 : 3;
+                    for (let i = 0; i < dustCount; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const speed = Math.random() * 1.2 + 0.4;
+                        game.particles.push(new Particle(
+                            this.x + (Math.random() - 0.5) * 10,
+                            this.y + 30 + (Math.random() - 0.5) * 8,
+                            Math.cos(angle) * speed + this.vx * 0.1,
+                            Math.sin(angle) * speed - Math.random() * 0.8,
+                            40 + Math.random() * 40,
+                            Math.random() * 2 + 1.5
+                        ));
+                    }
+                }
+            }
+            
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.scale, this.scale);
+                
+                const wobble = Math.sin(game.time * 0.05) * 0.02;
+                
+                ctx.save();
+                ctx.translate(0, -35);
+                ctx.rotate(this.headTilt + wobble);
+                
+                ctx.fillStyle = this.baseColor;
+                for (let i = 0; i < 3; i++) {
+                    ctx.globalAlpha = 0.1 + i * 0.05;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 16 + i, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+                ctx.beginPath();
+                ctx.arc(0, 0, 15, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+                ctx.lineWidth = 0.8;
+                for (let i = 0; i < 4; i++) {
+                    const angle = (i / 4) * Math.PI * 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 12 - i * 2, angle, angle + Math.PI / 3);
+                    ctx.stroke();
+                }
+                
+                ctx.fillStyle = '#000';
+                const eyeL = Math.sin(game.time * 0.08) * 1;
+                const eyeR = Math.sin(game.time * 0.08 + 0.5) * 1;
+                ctx.beginPath();
+                ctx.arc(-5 + eyeL, -3, 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(5 + eyeR, -3, 3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(0, 2, 4, 0, Math.PI);
+                ctx.stroke();
+                
+                ctx.restore();
+                
+                ctx.fillStyle = this.baseColor;
+                ctx.beginPath();
+                ctx.ellipse(0, 10, 18, 28, 0, 0, Math.PI * 2);
+                ctx.fill();
+                
+                for (let i = 0; i < 2; i++) {
+                    ctx.globalAlpha = 0.08;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 10, 18 + i * 2, 28 + i, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+                
+                const armAngle = Math.sin(this.limbOffset + game.time * 0.08) * 0.35;
+                ctx.strokeStyle = this.baseColor;
+                ctx.lineWidth = 7;
+                ctx.lineCap = 'round';
+                
+                ctx.beginPath();
+                ctx.moveTo(-12, -8);
+                ctx.lineTo(-22 + Math.cos(armAngle) * 12, -5 + Math.sin(armAngle) * 12);
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(12, -8);
+                ctx.lineTo(22 - Math.cos(armAngle) * 12, -5 - Math.sin(armAngle) * 12);
+                ctx.stroke();
+                
+                const legAngle = Math.sin(this.limbOffset + game.time * 0.1) * 0.25;
+                ctx.lineWidth = 6;
+                
+                ctx.beginPath();
+                ctx.moveTo(-7, 30);
+                ctx.lineTo(-7 + Math.sin(legAngle) * 10, 46);
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(7, 30);
+                ctx.lineTo(7 - Math.sin(legAngle) * 10, 46);
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+        }
+        
+        for (let i = 0; i < 3; i++) {
+            game.agents.push(new Agent(
+                canvas.width * (0.2 + i * 0.3),
+                canvas.height * 0.62,
+                'parent'
+            ));
+        }
+        
+        for (let i = 0; i < 3; i++) {
+            game.agents.push(new Agent(
+                canvas.width * (0.15 + i * 0.35),
+                canvas.height * 0.65,
+                'child'
+            ));
+        }
+        
+        game.agents.forEach(a => a.chooseAction());
+        
+        function drawSky() {
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.5);
+            gradient.addColorStop(0, '#FFF8E7');
+            gradient.addColorStop(0.4, '#FFE5B4');
+            gradient.addColorStop(1, '#FFCB7E');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height * 0.5);
+            
+            const sunX = canvas.width * 0.15 + Math.sin(game.time * 0.002) * 60;
+            const sunY = canvas.height * 0.18 + Math.cos(game.time * 0.0015) * 40;
+            
+            const sunGlow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 80);
+            sunGlow.addColorStop(0, 'rgba(255, 220, 80, 0.4)');
+            sunGlow.addColorStop(1, 'rgba(255, 180, 0, 0)');
+            ctx.fillStyle = sunGlow;
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, 80, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#FFD966';
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, 45, 0, Math.PI * 2);
+            ctx.fill();
+            
+            drawCloudLayer(0.12, 0.5, 180);
+            drawCloudLayer(0.22, 0.25, 240);
+        }
+        
+        function drawCloudLayer(yRatio, speed, cloudSpacing) {
+            const y = canvas.height * yRatio;
+            const offset = (game.time * speed) % (canvas.width + cloudSpacing);
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+            for (let i = -2; i < canvas.width / cloudSpacing + 2; i++) {
+                const x = i * cloudSpacing + offset;
+                ctx.beginPath();
+                ctx.arc(x - 35, y, 28, 0, Math.PI * 2);
+                ctx.arc(x, y - 18, 32, 0, Math.PI * 2);
+                ctx.arc(x + 35, y, 30, 0, Math.PI * 2);
+                ctx.arc(x - 20, y + 15, 24, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        function drawGround() {
+            ctx.fillStyle = '#A8D66E';
+            ctx.fillRect(0, canvas.height * 0.5, canvas.width, canvas.height * 0.5);
+            
+            ctx.fillStyle = 'rgba(139, 101, 65, 0.15)';
+            for (let i = 0; i < 4; i++) {
+                ctx.beginPath();
+                ctx.ellipse(
+                    canvas.width * 0.3 + i * canvas.width * 0.2,
+                    canvas.height * 0.58 + Math.sin(i) * 15,
+                    80 + i * 30,
+                    20,
+                    Math.sin(i) * 0.3,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+            }
+        }
+        
+        function update() {
+            game.time++;
+            if (game.time >= game.cycleLength) {
+                game.time = 0;
+            }
+            
+            for (const agent of game.agents) {
+                agent.update();
+            }
+            
+            for (let i = game.particles.length - 1; i >= 0; i--) {
+                game.particles[i].update();
+                if (game.particles[i].life <= 0) {
+                    game.particles.splice(i, 1);
+                }
+            }
+        }
+        
+        function draw() {
+            ctx.fillStyle = '#f5e6d3';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            drawSky();
+            drawGround();
+            
+            for (const particle of game.particles) {
+                particle.draw(ctx);
+            }
+            
+            for (const agent of game.agents) {
+                agent.draw(ctx);
+            }
+        }
+        
+        function animate() {
+            update();
+            draw();
+            requestAnimationFrame(animate);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>

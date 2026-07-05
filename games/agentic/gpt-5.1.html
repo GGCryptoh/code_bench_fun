@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Agentic Paper Mache Family - Looping Cartoon</title>
+<style>
+html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #0b0a11;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+canvas {
+    display: block;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(function () {
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+
+    let W = window.innerWidth;
+    let H = window.innerHeight;
+
+    function resize() {
+        W = window.innerWidth;
+        H = window.innerHeight;
+        canvas.width = W;
+        canvas.height = H;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Global timing
+    const LOOP_DURATION = 20000; // 20 seconds
+    let startTime = null;
+    let lastTime = null;
+
+    // Scene data
+    const clouds = [];
+    const particles = [];
+    const floatingBits = [];
+    const family = [];
+    let paperTex;
+
+    function makePaperTexture() {
+        const size = 256;
+        const cvs = document.createElement('canvas');
+        cvs.width = cvs.height = size;
+        const c = cvs.getContext('2d');
+
+        // Base warm paper color
+        const grad = c.createLinearGradient(0, 0, size, size);
+        grad.addColorStop(0, '#f7f0e2');
+        grad.addColorStop(1, '#f1e4cf');
+        c.fillStyle = grad;
+        c.fillRect(0, 0, size, size);
+
+        // Grain dots
+        for (let i = 0; i < 2500; i++) {
+            const x = Math.random() * size;
+            const y = Math.random() * size;
+            const alpha = 0.06 + Math.random() * 0.08;
+            const shade = 220 + (Math.random() * 35 | 0); // 220-255
+            c.fillStyle = `rgba(${shade},${shade - 10},${shade - 20},${alpha})`;
+            c.fillRect(x, y, 1.2, 1.2);
+        }
+        // Some fibers
+        for (let i = 0; i < 120; i++) {
+            const x = Math.random() * size;
+            const y = Math.random() * size;
+            const len = 8 + Math.random() * 18;
+            const angle = Math.random() * Math.PI * 2;
+            c.strokeStyle = 'rgba(180,160,130,0.16)';
+            c.lineWidth = 0.6;
+            c.beginPath();
+            c.moveTo(x, y);
+            c.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+            c.stroke();
+        }
+        return cvs;
+    }
+
+    function initClouds() {
+        clouds.length = 0;
+        const layers = [
+            { count: 4, speed: -6, yBase: 0.18, yJitter: 0.05, scaleMin: 0.8, scaleMax: 1.1, alpha: 0.45 },
+            { count: 5, speed: -10, yBase: 0.28, yJitter: 0.06, scaleMin: 0.55, scaleMax: 0.8, alpha: 0.55 },
+            { count: 6, speed: -14, yBase: 0.35, yJitter: 0.07, scaleMin: 0.4, scaleMax: 0.6, alpha: 0.6 }
+        ];
+        layers.forEach((layer, li) => {
+            for (let i = 0; i < layer.count; i++) {
+                clouds.push({
+                    layer: li,
+                    x: Math.random(),
+                    y: layer.yBase + (Math.random() - 0.5) * layer.yJitter,
+                    scale: layer.scaleMin + Math.random() * (layer.scaleMax - layer.scaleMin),
+                    speed: layer.speed * (0.8 + Math.random() * 0.4),
+                    alpha: layer.alpha
+                });
+            }
+        });
+    }
+
+    function initFloatingBits() {
+        floatingBits.length = 0;
+        const count = 40;
+        for (let i = 0; i < count; i++) {
+            floatingBits.push({
+                x: Math.random(),
+                y: 0.55 + Math.random() * 0.4,
+                vy: -2 - Math.random() * 5,
+                vx: (Math.random() - 0.5) * 4,
+                size: 0.004 + Math.random() * 0.006,
+                alpha: 0.15 + Math.random() * 0.15
+            });
+        }
+    }
+
+    function initFamily() {
+        family.length = 0;
+        // Four characters: tall parent, medium parent, older child, toddler
+        family.push({
+            role: 'parent1',
+            color: '#f9c58b',
+            accent: '#5a4b8b',
+            height: 0.32,
+            offset: -0.12,
+            stepOffset: 0.0
+        });
+        family.push({
+            role: 'parent2',
+            color: '#f7b18b',
+            accent: '#b5525c',
+            height: 0.3,
+            offset: 0.02,
+            stepOffset: 0.25
+        });
+        family.push({
+            role: 'child',
+            color: '#f6d08c',
+            accent: '#2f7b76',
+            height: 0.22,
+            offset: 0.16,
+            stepOffset: 0.5
+        });
+        family.push({
+            role: 'toddler',
+            color: '#f8e0a5',
+            accent: '#c4803b',
+            height: 0.17,
+            offset: 0.28,
+            stepOffset: 0.75
+        });
+    }
+
+    paperTex = makePaperTexture();
+    initClouds();
+    initFloatingBits();
+    initFamily();
+
+    function spawnDust(x, y, dir) {
+        const count = 4 + (Math.random() * 3 | 0);
+        for (let i = 0; i < count; i++) {
+            particles.push({
+                x: x + (Math.random() - 0.5) * 6,
+                y: y + (Math.random() - 0.2) * 4,
+                vx: dir * (15 + Math.random() * 25) + (Math.random() - 0.5) * 25,
+                vy: -30 - Math.random() * 40,
+                life: 0.4 + Math.random() * 0.5,
+                maxLife: 0.4 + Math.random() * 0.5,
+                size: 2 + Math.random() * 4,
+                shade: 150 + (Math.random() * 40 | 0)
+            });
+        }
+    }
+
+    function updateParticles(dt) {
+        const g = 80;
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.vy += g * dt;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.life -= dt;
+            if (p.life <= 0 || p.y > H * 0.9) {
+                particles.splice(i, 1);
+            }
+        }
+    }
+
+    function updateFloatingBits(dt) {
+        for (let i = 0; i < floatingBits.length; i++) {
+            const b = floatingBits[i];
+            b.y += b.vy * dt / 60;
+            b.x += b.vx * dt / 60;
+            if (b.y < 0.5) {
+                b.y = 0.95 + Math.random() * 0.1;
+                b.x = Math.random();
+                b.vy = -2 - Math.random() * 5;
+                b.vx = (Math.random() - 0.5) * 4;
+            }
+            if (b.x < -0.05) b.x = 1.05;
+            if (b.x > 1.05) b.x = -0.05;
+        }
+    }
+
+    function drawSky(t) {
+        const topColor = '#f4c7a0';
+        const midColor = '#fbe6c8';
+        const bottomColor = '#f8d3a5';
+
+        const grad = ctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, topColor);
+        grad.addColorStop(0.5, midColor);
+        grad.addColorStop(1, bottomColor);
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+    }
+
+    function drawSun(t) {
+        const cx = W * 0.82;
+        const cy = H * 0.18 + Math.sin(t * 0.2) * H * 0.01;
+        const r = Math.min(W, H) * 0.11;
+
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.4);
+        grad.addColorStop(0, 'rgba(255,255,220,1)');
+        grad.addColorStop(0.35, 'rgba(255,234,180,0.9)');
+        grad.addColorStop(0.7, 'rgba(255,210,150,0.3)');
+        grad.addColorStop(1, 'rgba(255,190,130,0)');
+
+        ctx.beginPath();
+        ctx.fillStyle = grad;
+        ctx.arc(cx, cy, r * 1.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.fillStyle = '#ffe6b3';
+        ctx.arc(cx, cy, r * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    function drawMountains() {
+        const baseY1 = H * 0.6;
+        const baseY2 = H * 0.67;
+
+        // Far range
+        ctx.fillStyle = '#e2b7a4';
+        ctx.beginPath();
+        ctx.moveTo(0, baseY1);
+        ctx.lineTo(W * 0.18, baseY1 - H * 0.18);
+        ctx.lineTo(W * 0.39, baseY1 - H * 0.11);
+        ctx.lineTo(W * 0.58, baseY1 - H * 0.21);
+        ctx.lineTo(W * 0.83, baseY1 - H * 0.14);
+        ctx.lineTo(W, baseY1 - H * 0.19);
+        ctx.lineTo(W, H);
+        ctx.lineTo(0, H);
+        ctx.closePath();
+        ctx.fill();
+
+        // Mid range
+        ctx.fillStyle = '#d19a86';
+        ctx.beginPath();
+        ctx.moveTo(0, baseY2);
+        ctx.lineTo(W * 0.15, baseY2 - H * 0.12);
+        ctx.lineTo(W * 0.33, baseY2 - H * 0.08);
+        ctx.lineTo(W * 0.52, baseY2 - H * 0.15);
+        ctx.lineTo(W * 0.7, baseY2 - H * 0.07);
+        ctx.lineTo(W * 0.92, baseY2 - H * 0.12);
+        ctx.lineTo(W, baseY2 - H * 0.1);
+        ctx.lineTo(W, H);
+        ctx.lineTo(0, H);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    function drawCloud(cloud) {
+        const x = cloud.x * W;
+        const y = cloud.y * H;
+        const base = Math.min(W, H) * 0.09 * cloud.scale;
+
+        ctx.save();
+        ctx.globalAlpha = cloud.alpha;
+        ctx.fillStyle = '#ffffff';
+
+        ctx.beginPath();
+        ctx.arc(x - base * 0.6, y, base * 0.6, 0, Math.PI * 2);
+        ctx.arc(x, y - base * 0.2, base * 0.9, 0, Math.PI * 2);
+        ctx.arc(x + base * 0.7, y, base * 0.75, 0, Math.PI * 2);
+        ctx.arc(x + base * 0.2, y + base * 0.2, base * 0.6, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    function updateClouds(dt) {
+        for (let i = 0; i < clouds.length; i++) {
+            const c = clouds[i];
+            c.x += (c.speed / 100) * dt;
+            if (c.x < -0.25) {
+                c.x = 1.1;
+                c.y = c.y + (Math.random() - 0.5) * 0.03;
+            }
+        }
+    }
+
+    function drawGround(t) {
+        const horizon = H * 0.72;
+        const grad = ctx.createLinearGradient(0, horizon, 0, H);
+        grad.addColorStop(0, '#d38a55');
+        grad.addColorStop(0.5, '#c27245');
+        grad.addColorStop(1, '#9b5230');
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, horizon, W, H - horizon);
+
+        // Path
+        const pathTop = horizon + H * 0.02;
+        ctx.beginPath();
+        ctx.moveTo(-W * 0.1, pathTop);
+        ctx.quadraticCurveTo(W * 0.35, horizon + H * 0.09, W * 1.1, horizon + H * 0.06);
+        ctx.lineTo(W * 1.1, H);
+        ctx.lineTo(-W * 0.1, H);
+        ctx.closePath();
+
+        const pathGrad = ctx.createLinearGradient(0, pathTop, 0, H);
+        pathGrad.addColorStop(0, '#f1c59b');
+        pathGrad.addColorStop(1, '#c78856');
+        ctx.fillStyle = pathGrad;
+        ctx.fill();
+
+        // Path texture strokes
+        ctx.strokeStyle = 'rgba(131,71,44,0.25)';
+        ctx.lineWidth = 3;
+        const lines = 7;
+        for (let i = 0; i < lines; i++) {
+            const yy = pathTop + (H - pathTop) * (i / (lines * 2 + 2));
+            ctx.beginPath();
+            ctx.moveTo(-W * 0.05, yy);
+            ctx.quadraticCurveTo(
+                W * 0.3,
+                yy + H * 0.02 * (Math.sin(t * 0.4 + i) * 0.3),
+                W * 1.05,
+                yy + H * 0.01 * (Math.cos(t * 0.35 + i * 1.4) * 0.4)
+            );
+            ctx.stroke();
+        }
+
+        // Foreground torn edge
+        ctx.fillStyle = 'rgba(80,38,26,0.85)';
+        ctx.beginPath();
+        ctx.moveTo(0, H * 0.9);
+        for (let x = 0; x <= W; x += W / 16) {
+            const offset = (Math.sin((x / W) * Math.PI * 3 + t * 0.7) * 0.02 + 0.02) * H;
+            ctx.lineTo(x, H * 0.9 + offset);
+        }
+        ctx.lineTo(W, H);
+        ctx.lineTo(0, H);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    function drawFamily(t, loopPhase, dt) {
+        const horizon = H * 0.72;
+        const groundY = horizon + H * 0.02;
+        const span = W * 1.45;
+        const groupX = -W * 0.25 + span * loopPhase;
+
+        const stepSpeed = 3.1;
+        const walkDir = 1;
+
+        // Waddle amplitude curves across loop for more "agency"
+        const energy = 0.6 + 0.3 * Math.sin(loopPhase * Math.PI * 2);
+
+        family.forEach((ch, idx) => {
+            const scale = ch.height;
+            const bodyH = H * scale;
+            const baseX = groupX + ch.offset * W;
+            const baseY = groundY - bodyH * 0.1;
+
+            const bob = Math.sin(t * (1.3 + idx * 0.1) + idx) * bodyH * 0.03 * energy;
+            const sway = Math.sin(t * 0.7 + idx * 0.3) * 6 * energy;
+
+            const hipX = baseX + sway * 0.5;
+            const hipY = baseY - bodyH * 0.35 + bob;
+
+            const headR = bodyH * 0.16;
+            const torsoH = bodyH * 0.4;
+            const torsoW = headR * (ch.role === 'child' || ch.role === 'toddler' ? 1.1 : 1.3);
+
+            const stepPhase = (t * stepSpeed + ch.stepOffset * Math.PI * 2) % (Math.PI * 2);
+            const leftPhase = stepPhase;
+            const rightPhase = stepPhase + Math.PI;
+
+            const stepLift = bodyH * 0.18 * (0.8 + idx * 0.06);
+            const stepHoriz = headR * 0.7;
+
+            const leftStepVal = Math.sin(leftPhase);
+            const rightStepVal = Math.sin(rightPhase);
+
+            const leftFootY = groundY - Math.max(0, leftStepVal) * stepLift * energy;
+            const rightFootY = groundY - Math.max(0, rightStepVal) * stepLift * energy;
+
+            const legSpread = headR * 0.7;
+            const leftFootX = hipX - legSpread + Math.cos(leftPhase) * stepHoriz * 0.5 * energy;
+            const rightFootX = hipX + legSpread + Math.cos(rightPhase) * stepHoriz * 0.5 * energy;
+
+            // Arms
+            const armSwingAmp = headR * 0.9;
+            const leftArmPhase = stepPhase + Math.PI;
+            const rightArmPhase = stepPhase;
+
+            const leftHandX = hipX - torsoW * 1.1 + Math.cos(leftArmPhase) * armSwingAmp * 0.5;
+            const leftHandY = hipY - torsoH * 0.1 + Math.sin(leftArmPhase) * armSwingAmp * 0.5;
+            const rightHandX = hipX + torsoW * 1.1 + Math.cos(rightArmPhase) * armSwingAmp * 0.5;
+            const rightHandY = hipY - torsoH * 0.1 + Math.sin(rightArmPhase) * armSwingAmp * 0.5;
+
+            // Special gesture for one parent: pointing arm
+            let rightHandOverride = null;
+            if (ch.role === 'parent2') {
+                const gesturePhase = (loopPhase * 2) % 1;
+                if (gesturePhase > 0.3 && gesturePhase < 0.6) {
+                    const g = (gesturePhase - 0.3) / 0.3;
+                    const raise = Math.sin(g * Math.PI) * headR * 2.2;
+                    rightHandOverride = {
+                        x: hipX + torsoW * 1.2 + headR * 0.8,
+                        y: hipY - torsoH * 0.6 - raise
+                    };
+                }
+            }
+
+            const childExtraHop =
+                ch.role === 'child'
+                    ? Math.max(0, Math.sin(t * 4.0)) * bodyH * 0.09
+                    : 0;
+            const toddlerWobble =
+                ch.role === 'toddler'
+                    ? Math.sin(t * 3.1) * bodyH * 0.035
+                    : 0;
+
+            const effectiveHipY = hipY - childExtraHop + toddlerWobble;
+
+            // LEGS
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#5e4436';
+            ctx.lineWidth = Math.max(2, headR * 0.22);
+
+            function drawLeg(footX, footY, phaseSign) {
+                const midY = effectiveHipY + (footY - effectiveHipY) * 0.45;
+                const midX =
+                    hipX + (footX - hipX) * 0.3 +
+                    (phaseSign * headR * 0.25 * Math.sin(stepPhase) * energy);
+                ctx.beginPath();
+                ctx.moveTo(hipX, effectiveHipY);
+                ctx.quadraticCurveTo(midX, midY, footX, footY);
+                ctx.stroke();
+
+                // Shoe
+                ctx.fillStyle = '#3c2620';
+                ctx.beginPath();
+                ctx.ellipse(
+                    footX,
+                    footY + headR * 0.07,
+                    headR * 0.45,
+                    headR * 0.18,
+                    0,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+            }
+
+            drawLeg(leftFootX, leftFootY, -1);
+            drawLeg(rightFootX, rightFootY, 1);
+
+            // Dust from feet near ground & down swing
+            const spawnChanceBase = 4 * dt;
+            const dir = walkDir;
+            if (leftStepVal < 0.1 && leftStepVal > -0.25 && Math.random() < spawnChanceBase) {
+                spawnDust(leftFootX, groundY - 2, dir);
+            }
+            if (rightStepVal < 0.1 && rightStepVal > -0.25 && Math.random() < spawnChanceBase) {
+                spawnDust(rightFootX, groundY - 2, dir);
+            }
+
+            // TORSO
+            ctx.save();
+            const bodyTilt = -0.09 + 0.04 * Math.sin(stepPhase * 0.7 + idx);
+            ctx.translate(hipX, effectiveHipY - torsoH * 0.5);
+            ctx.rotate(bodyTilt * energy + (ch.role === 'toddler' ? toddlerWobble * 0.04 : 0));
+            const r = headR * 0.35;
+
+            ctx.fillStyle = ch.accent;
+            ctx.beginPath();
+            ctx.moveTo(-torsoW, 0);
+            ctx.lineTo(torsoW, 0);
+            ctx.quadraticCurveTo(torsoW + r, torsoH * 0.2, torsoW * 0.7, torsoH);
+            ctx.lineTo(-torsoW * 0.7, torsoH);
+            ctx.quadraticCurveTo(-torsoW - r, torsoH * 0.2, -torsoW, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(40,22,18,0.6)';
+            ctx.lineWidth = Math.max(1.5, headR * 0.12);
+            ctx.stroke();
+            ctx.restore();
+
+            // ARMS
+            ctx.strokeStyle = '#5e4436';
+            ctx.lineWidth = Math.max(2, headR * 0.21);
+
+            function drawArm(targetX, targetY, side) {
+                const shoulderX = hipX + side * torsoW * 0.9;
+                const shoulderY = effectiveHipY - torsoH * 0.7;
+                const midX = (shoulderX + targetX) / 2 + side * headR * 0.2;
+                const midY =
+                    (shoulderY + targetY) / 2 +
+                    headR * 0.1 * Math.sin(t * 1.5 + side * 0.7);
+                ctx.beginPath();
+                ctx.moveTo(shoulderX, shoulderY);
+                ctx.quadraticCurveTo(midX, midY, targetX, targetY);
+                ctx.stroke();
+
+                ctx.fillStyle = ch.color;
+                ctx.beginPath();
+                ctx.arc(targetX, targetY, headR * 0.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            drawArm(leftHandX, leftHandY, -1);
+            if (rightHandOverride) {
+                drawArm(rightHandOverride.x, rightHandOverride.y, 1);
+            } else {
+                drawArm(rightHandX, rightHandY, 1);
+            }
+
+            // HEAD
+            const headCX = hipX;
+            const headCY = effectiveHipY - torsoH * 0.9 - headR * 0.2 - childExtraHop * 0.1;
+
+            ctx.save();
+            ctx.translate(headCX, headCY);
+
+            ctx.fillStyle = ch.color;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, headR * 0.95, headR * 1.05, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(40,22,18,0.6)';
+            ctx.lineWidth = Math.max(1.3, headR * 0.12);
+            ctx.stroke();
+
+            // Hair variation
+            ctx.fillStyle = idx % 2 === 0 ? '#4a2a25' : '#2c2222';
+            ctx.beginPath();
+            ctx.ellipse(0, -headR * 0.4, headR * 1.05, headR * 0.7, 0, Math.PI, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            // Eyes
+            const eyeOffsetX = headR * 0.33;
+            const eyeOffsetY = headR * 0.05;
+
+            ctx.fillStyle = '#2b1a18';
+            const blink = Math.max(0.15, Math.abs(Math.sin(t * 2.2 + idx)) );
+            const eyeH = headR * 0.12 * blink;
+
+            ctx.beginPath();
+            ctx.ellipse(-eyeOffsetX, eyeOffsetY, headR * 0.12, eyeH, 0, 0, Math.PI * 2);
+            ctx.ellipse(eyeOffsetX, eyeOffsetY, headR * 0.12, eyeH, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Smile
+            ctx.strokeStyle = '#2b1a18';
+            ctx.lineWidth = headR * 0.08;
+            ctx.beginPath();
+            ctx.arc(
+                0,
+                headR * 0.18,
+                headR * 0.35,
+                0.15 * Math.PI,
+                0.85 * Math.PI
+            );
+            ctx.stroke();
+
+            // Little blush
+            ctx.fillStyle = 'rgba(224,118,92,0.35)';
+            ctx.beginPath();
+            ctx.ellipse(-eyeOffsetX, eyeOffsetY + headR * 0.22, headR * 0.16, headR * 0.1, 0, 0, Math.PI * 2);
+            ctx.ellipse(eyeOffsetX, eyeOffsetY + headR * 0.22, headR * 0.16, headR * 0.1, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+
+            // For toddler: simple paper cart (stroller)
+            if (ch.role === 'toddler') {
+                const cartY = groundY - headR * 0.1;
+                const cartX = hipX - headR * 1.7;
+                const cartW = headR * 2.5;
+                const cartH = headR * 1.6;
+
+                ctx.save();
+                ctx.translate(cartX, cartY);
+
+                ctx.strokeStyle = '#472a21';
+                ctx.lineWidth = headR * 0.18;
+                ctx.lineCap = 'round';
+
+                // Handle
+                ctx.beginPath();
+                ctx.moveTo(-headR * 1.2, -cartH * 0.8);
+                ctx.lineTo(-headR * 0.4, -cartH * 0.3);
+                ctx.stroke();
+
+                // Body
+                ctx.fillStyle = '#e8a87f';
+                ctx.beginPath();
+                ctx.moveTo(-cartW * 0.5, -cartH * 0.2);
+                ctx.lineTo(cartW * 0.55, -cartH * 0.3);
+                ctx.quadraticCurveTo(cartW * 0.75, cartH * 0.2, cartW * 0.4, cartH * 0.5);
+                ctx.lineTo(-cartW * 0.4, cartH * 0.55);
+                ctx.quadraticCurveTo(-cartW * 0.7, cartH * 0.1, -cartW * 0.5, -cartH * 0.2);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.strokeStyle = 'rgba(70,40,30,0.8)';
+                ctx.lineWidth = headR * 0.12;
+                ctx.stroke();
+
+                // Wheels
+                const wheelR = headR * 0.4;
+                ctx.fillStyle = '#33211f';
+                ctx.beginPath();
+                ctx.arc(-cartW * 0.35, cartH * 0.6, wheelR, 0, Math.PI * 2);
+                ctx.arc(cartW * 0.35, cartH * 0.6, wheelR, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#f4d1a7';
+                ctx.beginPath();
+                ctx.arc(-cartW * 0.35, cartH * 0.6, wheelR * 0.55, 0, Math.PI * 2);
+                ctx.arc(cartW * 0.35, cartH * 0.6, wheelR * 0.55, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        });
+    }
+
+    function drawParticles() {
+        for (let i = 0; i < particles.length; i++) {
+            const p = particles[i];
+            const alpha = Math.max(0, p.life / p.maxLife);
+            const s = p.size;
+            ctx.fillStyle = `rgba(${p.shade},${p.shade - 15},${p.shade - 25},${alpha * 0.9})`;
+            ctx.beginPath();
+            ctx.ellipse(p.x, p.y, s, s * 0.6, Math.random() * Math.PI, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    function drawFloatingBits() {
+        for (let i = 0; i < floatingBits.length; i++) {
+            const b = floatingBits[i];
+            const x = b.x * W;
+            const y = b.y * H;
+            const s = Math.min(W, H) * b.size;
+            ctx.fillStyle = `rgba(255,240,210,${b.alpha})`;
+            ctx.beginPath();
+            ctx.ellipse(x, y, s * 2, s, Math.sin(i) * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    function drawPaperOverlay() {
+        if (!paperTex) return;
+        ctx.save();
+        ctx.globalAlpha = 0.33;
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.drawImage(paperTex, 0, 0, W, H);
+        ctx.restore();
+    }
+
+    function drawVignette() {
+        const cx = W * 0.5;
+        const cy = H * 0.5;
+        const r = Math.sqrt(cx * cx + cy * cy);
+        const grad = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, 'rgba(0,0,0,0.48)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+    }
+
+    function loop(timestamp) {
+        if (!startTime) startTime = timestamp;
+        if (!lastTime) lastTime = timestamp;
+
+        const elapsed = timestamp - startTime;
+        const dt = (timestamp - lastTime) / 1000;
+        lastTime = timestamp;
+
+        const loopT = elapsed % LOOP_DURATION;
+        const loopPhase = loopT / LOOP_DURATION;
+        const t = loopT / 1000;
+
+        updateClouds(dt);
+        updateParticles(dt);
+        updateFloatingBits(dt);
+
+        drawSky(t);
+        drawSun(t);
+        for (let i = 0; i < clouds.length; i++) {
+            drawCloud(clouds[i]);
+        }
+        drawMountains();
+        drawGround(t);
+        drawFloatingBits();
+        drawFamily(t, loopPhase, dt);
+        drawParticles();
+        drawPaperOverlay();
+        drawVignette();
+
+        requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
