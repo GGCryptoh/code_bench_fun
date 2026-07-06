@@ -15,7 +15,7 @@
       "provider": "openrouter",
       "provider_model_id": "z-ai/glm-5.2",
       "ok": false,
-      "error": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 48000 tokens, but can only afford 2714. To increase, visit https://openrouter.ai/workspaces/default/keys/4e27f56bf188954e72518606faa471bb9a922370dbe5f3093046f07914d81822 and adjust the key's monthly lim",
+      "error": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 48000 tokens, but can only afford 2714. To increase, visit the OpenRouter dashboard (key settings) and adjust the key's monthly lim",
       "ms": 1210,
       "turns": 0,
       "input_tokens": 0,

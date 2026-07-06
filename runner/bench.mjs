@@ -708,6 +708,8 @@ async function runOpenRouterBuild({ runId, modelKey, entry, prompt, api = "openr
 }
 
 function makeFailedBuild(modelKey, provider, providerModelId, ms, error) {
+  // Error strings end up in public run JSONs — strip account-specific dashboard URLs.
+  error = String(error || "").replace(/https?:\/\/openrouter\.ai\/workspaces\/[^\s"']+/g, "the OpenRouter dashboard (key settings)");
   return {
     model_key: modelKey,
     provider,
